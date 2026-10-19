@@ -22,7 +22,13 @@ def get_client() -> AsyncGroq:
     if _groq_client is None:
         if not config.GROQ_API_KEY:
             raise HTTPException(status_code=503, detail="Language model service is not configured")
-        _groq_client = AsyncGroq(api_key=config.GROQ_API_KEY, timeout=config.REQUEST_TIMEOUT)
+        # The SDK retries 408/409/429/5xx and connection errors itself, with
+        # exponential backoff, jitter and Retry-After support.
+        _groq_client = AsyncGroq(
+            api_key=config.GROQ_API_KEY,
+            timeout=config.REQUEST_TIMEOUT,
+            max_retries=config.UPSTREAM_MAX_RETRIES,
+        )
     return _groq_client
 
 

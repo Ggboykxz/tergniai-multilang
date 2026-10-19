@@ -76,6 +76,9 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `GROQ_API_KEY` | yes (for `/v1/converse`) | — | Groq API key |
 | `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Groq model ID |
 | `REQUEST_TIMEOUT` | no | `30` | Upstream timeout in seconds |
+| `UPSTREAM_MAX_RETRIES` | no | `2` | Retries for upstream `429`/`5xx`/connection errors (Azure and Groq); `0` disables |
+| `UPSTREAM_RETRY_BASE_DELAY` | no | `0.5` | First backoff step in seconds; doubles each retry, with full jitter (Azure) |
+| `UPSTREAM_RETRY_MAX_DELAY` | no | `10` | Longest wait between retries; a longer `Retry-After` fails fast (Azure) |
 | `MAX_CONTENT_LENGTH` | no | `5000` | Max characters per message |
 | `MAX_MEMORY_MESSAGES` | no | `20` | Max turns in `memory_context` |
 | `API_KEYS` | no | *(auth disabled)* | Comma-separated client keys accepted in `X-API-Key` |
