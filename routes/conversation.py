@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 
 from models import ConversationRequest, ConversationResponse
-from services.groq_service import get_response
+from services.assistant import get_response
 from services.languages import resolve_source_language, validate_language
 from services.translator import translate_text
 

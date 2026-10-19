@@ -21,6 +21,7 @@ CallNext = Callable[[Request], Awaitable[Response]]
 
 # Paths that never require an API key or count towards the rate limit
 PUBLIC_PATHS = {
+    "/chat",
     "/",
     "/health",
     "/health/ready",
@@ -74,7 +75,7 @@ class RateLimiter:
 rate_limiter = RateLimiter(limit=config.RATE_LIMIT_PER_MINUTE)
 
 
-def _client_id(request: Request) -> str:
+def client_id(request: Request) -> str:
     """Identify the caller by API key if present, otherwise by IP address"""
     api_key = request.headers.get("x-api-key")
     if api_key:
@@ -89,19 +90,28 @@ def _valid_api_key(candidate: Optional[str]) -> bool:
     return any(hmac.compare_digest(candidate, key) for key in config.API_KEYS)
 
 
+def _record_request(request: Request, status: int, elapsed: float) -> None:
+    method, route = metrics.method_label(request), metrics.route_label(request)
+    metrics.REQUESTS.labels(method, route, str(status)).inc()
+    metrics.REQUEST_LATENCY.labels(method, route).observe(elapsed)
+
+
 async def request_context(request: Request, call_next: CallNext) -> Response:
     """Attach a request ID and timing header to every response"""
     request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
     request.state.request_id = request_id
     start = time.perf_counter()
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Unhandled errors become a 500 further out; count them before re-raising
+        _record_request(request, 500, time.perf_counter() - start)
+        raise
 
     elapsed = time.perf_counter() - start
     elapsed_ms = elapsed * 1000
-    method, route = metrics.method_label(request), metrics.route_label(request)
-    metrics.REQUESTS.labels(method, route, str(response.status_code)).inc()
-    metrics.REQUEST_LATENCY.labels(method, route).observe(elapsed)
+    _record_request(request, response.status_code, elapsed)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
     logger.info(
@@ -128,7 +138,7 @@ async def rate_limit(request: Request, call_next: CallNext) -> Response:
     if rate_limiter.limit <= 0 or request.url.path in PUBLIC_PATHS or request.method == "OPTIONS":
         return await call_next(request)
 
-    allowed, remaining, retry_after = rate_limiter.hit(_client_id(request))
+    allowed, remaining, retry_after = rate_limiter.hit(client_id(request))
     headers = {
         "X-RateLimit-Limit": str(rate_limiter.limit),
         "X-RateLimit-Remaining": str(remaining),

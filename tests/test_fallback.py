@@ -1,40 +1,31 @@
 """
-Tests for Groq translation/detection and the Azure -> Groq fallback
+Tests for LLM translation/detection and the provider chain (Azure -> LLM providers)
 """
 
 import json
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 import respx
-from fastapi import HTTPException
 
 import config
-from services import groq_service
+from tests.conftest import GROQ_URL
 
 TRANSLATE_URL = config.AZURE_TRANSLATOR_ENDPOINT + "/translate"
 DETECT_URL = config.AZURE_TRANSLATOR_ENDPOINT + "/detect"
+CHAT_URL = GROQ_URL + "/chat/completions"
+
+
+def chat_reply(payload) -> httpx.Response:
+    content = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+    return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
 
 @pytest.fixture
-def groq(monkeypatch):
-    """Fake Groq client; set `groq.reply` to the JSON object the model returns"""
-    create = AsyncMock()
-    client = MagicMock()
-    client.chat.completions.create = create
-
-    def reply(payload):
-        content = payload if isinstance(payload, str) else json.dumps(payload)
-        create.return_value = SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
-        )
-
-    create.reply = reply
-    monkeypatch.setattr(groq_service, "get_client", lambda: client)
-    monkeypatch.setattr(config, "TRANSLATION_PROVIDER", "auto")
-    return create
+def chain(monkeypatch):
+    """Translate and detect with Azure first, then Groq"""
+    monkeypatch.setattr(config, "TRANSLATION_PROVIDERS", ["azure", "groq"])
+    monkeypatch.setattr(config, "DETECTION_PROVIDERS", ["azure", "groq"])
 
 
 def translate(client, content="Hello", src="en", tgt="yo"):
@@ -43,77 +34,67 @@ def translate(client, content="Hello", src="en", tgt="yo"):
     )
 
 
-def test_groq_used_when_azure_not_configured(client, groq, monkeypatch):
-    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEY", "")
-    groq.reply({"translations": ["Ẹ n lẹ"]})
+@respx.mock
+def test_llm_used_when_azure_not_configured(client, chain, monkeypatch):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    route = respx.post(CHAT_URL).mock(return_value=chat_reply({"translations": ["Ẹ n lẹ"]}))
 
     response = translate(client)
 
     assert response.status_code == 200
     assert response.json()["translated_text"] == "Ẹ n lẹ"
-    prompt = groq.await_args.kwargs["messages"][0]["content"]
-    assert "English to Yoruba" in prompt
-    assert groq.await_args.kwargs["response_format"] == {"type": "json_object"}
+    body = json.loads(route.calls.last.request.content)
+    assert "English to Yoruba" in body["messages"][0]["content"]
+    assert body["response_format"] == {"type": "json_object"}
+    assert route.calls.last.request.headers["Authorization"] == "Bearer test-groq-key"
 
 
 @respx.mock
-def test_falls_back_to_groq_when_azure_fails(client, groq):
-    azure = respx.post(TRANSLATE_URL).mock(return_value=httpx.Response(401, text="revoked"))
-    groq.reply({"translations": ["Ẹ n lẹ"]})
+def test_falls_back_to_llm_when_azure_fails(client, chain):
+    azure = respx.post(TRANSLATE_URL).mock(return_value=httpx.Response(500))
+    llm = respx.post(CHAT_URL).mock(return_value=chat_reply({"translations": ["Ẹ n lẹ"]}))
 
     response = translate(client)
 
-    assert response.status_code == 200
     assert response.json()["translated_text"] == "Ẹ n lẹ"
-    assert azure.called
-    assert groq.await_count == 1
+    assert azure.called and llm.called
 
 
 @respx.mock
-def test_azure_used_first_when_healthy(client, groq):
+def test_azure_used_first_when_healthy(client, chain):
     respx.post(TRANSLATE_URL).mock(
         return_value=httpx.Response(200, json=[{"translations": [{"text": "Bawo ni"}]}])
     )
+    llm = respx.post(CHAT_URL)
 
-    response = translate(client)
-
-    assert response.json()["translated_text"] == "Bawo ni"
-    assert groq.await_count == 0
+    assert translate(client).json()["translated_text"] == "Bawo ni"
+    assert not llm.called
 
 
 @respx.mock
-def test_azure_only_mode_does_not_fall_back(client, groq, monkeypatch):
-    monkeypatch.setattr(config, "TRANSLATION_PROVIDER", "azure")
+def test_azure_only_chain_does_not_fall_back(client):
     respx.post(TRANSLATE_URL).mock(return_value=httpx.Response(500))
+    llm = respx.post(CHAT_URL)
 
-    response = translate(client)
-
-    assert response.status_code == 502
-    assert groq.await_count == 0
-
-
-def test_groq_only_mode(client, groq, monkeypatch):
-    monkeypatch.setattr(config, "TRANSLATION_PROVIDER", "groq")
-    groq.reply({"translations": ["Sannu"]})
-
-    response = translate(client, tgt="ha")
-
-    assert response.json()["translated_text"] == "Sannu"
+    assert translate(client).status_code == 502
+    assert not llm.called
 
 
-def test_no_provider_configured_returns_503(client, groq, monkeypatch):
-    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEY", "")
-    monkeypatch.setattr(config, "GROQ_API_KEY", "")
+def test_no_provider_configured_returns_503(client, chain, monkeypatch):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    monkeypatch.setattr(config, "LLM_PROVIDERS", {})
 
-    response = translate(client)
+    assert translate(client).status_code == 503
+    ready = client.get("/health/ready").json()["services"]
+    assert ready == {"translator": False, "llm": False, "agent": False}
 
-    assert response.status_code == 503
-    assert client.get("/health/ready").json()["services"]["translator"] is False
 
-
-def test_groq_batch_translation(client, groq, monkeypatch):
-    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEY", "")
-    groq.reply({"translations": ["Ụtụtụ ọma", "Daalụ"]})
+@respx.mock
+def test_llm_batch_translation(client, chain, monkeypatch):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    route = respx.post(CHAT_URL).mock(
+        return_value=chat_reply({"translations": ["Ụtụtụ ọma", "Daalụ"]})
+    )
 
     response = client.post(
         "/v1/translate/batch",
@@ -121,10 +102,11 @@ def test_groq_batch_translation(client, groq, monkeypatch):
     )
 
     assert response.json()["translations"] == ["Ụtụtụ ọma", "Daalụ"]
-    sent = json.loads(groq.await_args.kwargs["messages"][1]["content"])
+    sent = json.loads(json.loads(route.calls.last.request.content)["messages"][1]["content"])
     assert sent == {"texts": ["Good morning", "Thank you"]}
 
 
+@respx.mock
 @pytest.mark.parametrize(
     "reply",
     [
@@ -134,9 +116,9 @@ def test_groq_batch_translation(client, groq, monkeypatch):
         "not json at all",
     ],
 )
-def test_groq_bad_translation_output_returns_502(client, groq, monkeypatch, reply):
-    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEY", "")
-    groq.reply(reply)
+def test_bad_llm_translation_output_returns_502(client, chain, monkeypatch, reply):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    respx.post(CHAT_URL).mock(return_value=chat_reply(reply))
 
     response = client.post(
         "/v1/translate/batch",
@@ -147,9 +129,17 @@ def test_groq_bad_translation_output_returns_502(client, groq, monkeypatch, repl
 
 
 @respx.mock
-def test_detect_falls_back_to_groq(client, groq):
+def test_json_in_code_fence_is_accepted(client, chain, monkeypatch):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    respx.post(CHAT_URL).mock(return_value=chat_reply('```json\n{"translations": ["Sannu"]}\n```'))
+
+    assert translate(client, tgt="ha").json()["translated_text"] == "Sannu"
+
+
+@respx.mock
+def test_detect_falls_back_to_llm(client, chain):
     respx.post(DETECT_URL).mock(return_value=httpx.Response(401))
-    groq.reply({"language": "HA", "score": 0.93})
+    respx.post(CHAT_URL).mock(return_value=chat_reply({"language": "HA", "score": 0.93}))
 
     response = client.post("/v1/detect", json={"content": "Ina kwana?"})
 
@@ -162,28 +152,60 @@ def test_detect_falls_back_to_groq(client, groq):
     }
 
 
-@pytest.mark.asyncio
-async def test_groq_detect_clamps_bad_score(groq):
-    groq.reply({"language": "yo", "score": "very sure"})
+@respx.mock
+def test_llm_detect_clamps_bad_score(client, chain, monkeypatch):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    respx.post(CHAT_URL).mock(return_value=chat_reply({"language": "yo", "score": "very sure"}))
 
-    assert await groq_service.detect_language("Bawo ni") == ("yo", 0.0)
-
-
-@pytest.mark.asyncio
-async def test_groq_detect_requires_language(groq):
-    groq.reply({"score": 0.5})
-
-    with pytest.raises(HTTPException) as exc_info:
-        await groq_service.detect_language("???")
-
-    assert exc_info.value.status_code == 502
+    assert client.post("/v1/detect", json={"content": "Bawo ni"}).json()["score"] == 0.0
 
 
-@pytest.mark.asyncio
-async def test_groq_api_error_returns_502(groq):
-    groq.side_effect = RuntimeError("boom")
+@respx.mock
+def test_pidgin_translation(client, chain, monkeypatch):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    route = respx.post(CHAT_URL).mock(
+        return_value=chat_reply({"translations": ["You dey go where?"]})
+    )
 
-    with pytest.raises(HTTPException) as exc_info:
-        await groq_service.translate_batch(["hi"], "en", "yo")
+    response = translate(client, content="Where are you going?", tgt="pcm")
 
-    assert exc_info.value.status_code == 502
+    assert response.json()["translated_text"] == "You dey go where?"
+    assert (
+        "Nigerian Pidgin" in json.loads(route.calls.last.request.content)["messages"][0]["content"]
+    )
+
+
+@respx.mock
+def test_azure_skipped_for_languages_it_does_not_support(client, chain):
+    azure = respx.post(TRANSLATE_URL)
+    respx.post(CHAT_URL).mock(return_value=chat_reply({"translations": ["Sawubona"]}))
+
+    response = translate(client, content="Hello", tgt="nr")
+
+    assert response.json()["translated_text"] == "Sawubona"
+    assert not azure.called
+
+
+@respx.mock
+def test_azure_used_for_new_supported_languages(client, chain):
+    azure = respx.post(TRANSLATE_URL).mock(
+        return_value=httpx.Response(200, json=[{"translations": [{"text": "Habari"}]}])
+    )
+
+    assert translate(client, tgt="sw").json()["translated_text"] == "Habari"
+    assert azure.called
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("detected", "expected"),
+    [("zh-hans", "zh-Hans"), ("zh", "zh-Hans"), ("ZH-TW", "zh-Hant"), ("no", "nb"), ("tl", "fil")],
+)
+def test_detected_codes_are_normalised(client, chain, monkeypatch, detected, expected):
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    respx.post(CHAT_URL).mock(return_value=chat_reply({"language": detected, "score": 0.9}))
+
+    body = client.post("/v1/detect", json={"content": "text"}).json()
+
+    assert body["language"] == expected
+    assert body["is_supported"] is True

@@ -4,10 +4,7 @@ Azure Translator service for the Terngi Translation API
 
 import asyncio
 import logging
-import random
 import uuid
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -15,54 +12,39 @@ from fastapi import HTTPException
 
 import config
 import metrics
-from services.cache import TTLCache
+from services.keypool import key_pool, mask
+from services.retry import RETRY_STATUS_CODES
+from services.retry import parse_retry_after as _parse_retry_after
+from services.retry import retry_delay as _retry_delay
 
 logger = logging.getLogger(__name__)
 
-# Cache of (from_language, to_language, content) -> translated text
-translation_cache = TTLCache(max_items=config.CACHE_MAX_ITEMS, ttl=config.CACHE_TTL_SECONDS)
-
-# Azure responses worth retrying: throttling and transient server errors
-RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+# Supported languages that Azure Translator does not offer; requests involving them skip Azure
+UNSUPPORTED_LANGUAGES = {"pcm", "nr", "om", "lg", "ny", "rn", "wo", "ff", "ee", "tw"}
 
 
-def _parse_retry_after(value: Optional[str]) -> Optional[float]:
-    """Return the Retry-After header (delta-seconds or HTTP-date) in seconds, if valid"""
-    if not value:
-        return None
-    try:
-        return max(0.0, float(value))
-    except ValueError:
-        pass
-    try:
-        when = parsedate_to_datetime(value)
-    except (TypeError, ValueError):
-        return None
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+def supports(*languages: str) -> bool:
+    """Whether Azure Translator can translate between these languages"""
+    return not UNSUPPORTED_LANGUAGES.intersection(languages)
 
 
-def _retry_delay(attempt: int, response: Optional[httpx.Response]) -> Optional[float]:
-    """
-    Seconds to wait before retry number `attempt` (0-based), or None to stop
-
-    Uses the server's Retry-After when present, otherwise exponential backoff
-    with full jitter. A Retry-After longer than UPSTREAM_RETRY_MAX_DELAY means
-    retrying sooner would only be throttled again, so we give up instead.
-    """
-    if response is not None:
-        retry_after = _parse_retry_after(response.headers.get("Retry-After"))
-        if retry_after is not None:
-            return retry_after if retry_after <= config.UPSTREAM_RETRY_MAX_DELAY else None
-    ceiling = min(config.UPSTREAM_RETRY_MAX_DELAY, config.UPSTREAM_RETRY_BASE_DELAY * 2**attempt)
-    return random.uniform(0, ceiling)  # noqa: S311 - jitter, not cryptography
+def _headers(key: str) -> Dict[str, str]:
+    return {
+        "Ocp-Apim-Subscription-Key": key,
+        "Ocp-Apim-Subscription-Region": config.AZURE_TRANSLATOR_LOCATION,
+        "Content-type": "application/json",
+        "X-ClientTraceId": str(uuid.uuid4()),
+    }
 
 
 @metrics.timed_upstream("azure")
 async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> Any:
     """
     Send a request to Azure Translator and return the parsed JSON body
+
+    Keys are tried in rotation: a rejected key (401/403) is skipped for a while and a
+    rate-limited key (429) is swapped for another one when available. Throttling,
+    transient 5xx and connection errors are retried with exponential backoff.
 
     Args:
         path: API path, e.g. "/translate" or "/detect"
@@ -72,29 +54,26 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
     Returns:
         Parsed JSON response
     """
-    if not config.AZURE_TRANSLATOR_KEY:
+    if not config.AZURE_TRANSLATOR_KEYS:
         raise HTTPException(status_code=503, detail="Translation service is not configured")
 
+    keys = key_pool.order("azure", config.AZURE_TRANSLATOR_KEYS)
+    if not keys:
+        logger.warning("All Azure Translator keys are cooling down")
+        raise HTTPException(status_code=502, detail="Translation service error")
+
     url = config.AZURE_TRANSLATOR_ENDPOINT.rstrip("/") + path
-
-    headers = {
-        "Ocp-Apim-Subscription-Key": config.AZURE_TRANSLATOR_KEY,
-        "Ocp-Apim-Subscription-Region": config.AZURE_TRANSLATOR_LOCATION,
-        "Content-type": "application/json",
-        "X-ClientTraceId": str(uuid.uuid4()),
-    }
-
     body = [{"text": text} for text in texts]
 
-    # Make the request to Azure Translator without blocking the event loop,
-    # retrying throttling, transient 5xx and connection errors
+    # Make the request to Azure Translator without blocking the event loop
     async with httpx.AsyncClient(timeout=config.REQUEST_TIMEOUT) as client:
         attempt = 0
         while True:
+            key = keys[0]
             response: Optional[httpx.Response] = None
             try:
                 response = await client.post(
-                    url, params={"api-version": "3.0", **params}, headers=headers, json=body
+                    url, params={"api-version": "3.0", **params}, headers=_headers(key), json=body
                 )
             except httpx.HTTPError as e:
                 retryable = isinstance(e, httpx.TransportError)
@@ -106,12 +85,27 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
                     ) from e
                 reason = type(e).__name__
             else:
-                if response.status_code not in RETRY_STATUS_CODES:
+                status = response.status_code
+                if status in (401, 403):
+                    logger.warning("Azure key %s was rejected; skipping it for a while", mask(key))
+                    key_pool.cool_down(key, config.INVALID_KEY_COOLDOWN_SECONDS)
+                    keys.pop(0)
+                    if keys:
+                        continue
+                    break
+                if status == 429 and len(keys) > 1:
+                    logger.warning("Azure key %s is rate-limited; trying the next key", mask(key))
+                    key_pool.cool_down(key, _cooldown(response))
+                    keys.pop(0)
+                    continue
+                if status not in RETRY_STATUS_CODES:
                     break
                 delay = _retry_delay(attempt, response)
                 if delay is None or attempt >= config.UPSTREAM_MAX_RETRIES:
+                    if status == 429:
+                        key_pool.cool_down(key, _cooldown(response))
                     break
-                reason = str(response.status_code)
+                reason = str(status)
 
             attempt += 1
             logger.warning(
@@ -124,8 +118,9 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
             await asyncio.sleep(delay)
 
     # Upstream errors are logged but not leaked to the client
-    if response.status_code != 200:
-        logger.error("Azure Translator returned %s: %s", response.status_code, response.text)
+    if response is None or response.status_code != 200:
+        if response is not None:
+            logger.error("Azure Translator returned %s: %s", response.status_code, response.text)
         raise HTTPException(status_code=502, detail="Translation service error")
 
     try:
@@ -134,6 +129,12 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
         raise HTTPException(
             status_code=502, detail="Invalid response from translation service"
         ) from e
+
+
+def _cooldown(response: httpx.Response) -> float:
+    """How long to rest a rate-limited key: its Retry-After, or the default"""
+    retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+    return config.KEY_COOLDOWN_SECONDS if retry_after is None else retry_after
 
 
 async def translate_batch(texts: List[str], from_language: str, to_language: str) -> List[str]:
@@ -148,35 +149,14 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
     Returns:
         Translated texts, in the same order as the input
     """
-    # If source and target languages are the same, no need to translate
-    if from_language == to_language:
-        return list(texts)
-
-    results: List[Optional[str]] = [
-        translation_cache.get((from_language, to_language, text)) for text in texts
-    ]
-    missing = [i for i, result in enumerate(results) if result is None]
-    metrics.CACHE_LOOKUPS.labels("hit").inc(len(texts) - len(missing))
-    metrics.CACHE_LOOKUPS.labels("miss").inc(len(missing))
-
-    if missing:
-        data = await _call_azure(
-            "/translate",
-            {"from": from_language, "to": to_language},
-            [texts[i] for i in missing],
-        )
-        try:
-            translated = [item["translations"][0]["text"] for item in data]
-        except (LookupError, TypeError) as e:
-            raise HTTPException(status_code=502, detail="No translation result received") from e
-        if len(translated) != len(missing):
-            raise HTTPException(status_code=502, detail="No translation result received")
-
-        for i, text in zip(missing, translated, strict=True):
-            results[i] = text
-            translation_cache.set((from_language, to_language, texts[i]), text)
-
-    return [result or "" for result in results]
+    data = await _call_azure("/translate", {"from": from_language, "to": to_language}, texts)
+    try:
+        translated = [item["translations"][0]["text"] for item in data]
+    except (LookupError, TypeError) as e:
+        raise HTTPException(status_code=502, detail="No translation result received") from e
+    if len(translated) != len(texts):
+        raise HTTPException(status_code=502, detail="No translation result received")
+    return translated
 
 
 async def detect_language(content: str) -> Tuple[str, float]:

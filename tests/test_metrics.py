@@ -7,11 +7,12 @@ from typing import Optional
 import httpx
 import pytest
 import respx
+from fastapi import HTTPException
 from prometheus_client import REGISTRY
 
 import config
 from middleware import rate_limiter
-from services import groq_service
+from services import assistant
 
 TRANSLATE_URL = config.AZURE_TRANSLATOR_ENDPOINT + "/translate"
 PAYLOAD = {"content": "Hello", "from_language": "en", "to_language": "yo"}
@@ -132,25 +133,38 @@ def test_azure_errors_counted(client):
     assert sample("terngi_upstream_requests_total", service="azure", outcome="error") == before + 1
 
 
-@pytest.mark.parametrize(("error", "outcome"), [(None, "success"), (RuntimeError("boom"), "error")])
-async def test_groq_calls_counted(monkeypatch, error, outcome):
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock, MagicMock
+GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-    create = AsyncMock(
-        side_effect=error,
-        return_value=SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content="Hi"))]
-        ),
-    )
-    client = MagicMock()
-    client.chat.completions.create = create
-    monkeypatch.setattr(groq_service, "get_client", lambda: client)
+
+@respx.mock
+@pytest.mark.parametrize(("status", "outcome"), [(200, "success"), (500, "error")])
+async def test_llm_calls_counted_per_provider(status, outcome):
+    body = {"choices": [{"message": {"content": "Hi"}}]} if status == 200 else {}
+    respx.post(GROQ_CHAT_URL).mock(return_value=httpx.Response(status, json=body))
     before = sample("terngi_upstream_requests_total", service="groq", outcome=outcome)
 
     try:
-        await groq_service.get_response("Hello")
-    except groq_service.HTTPException:
+        await assistant.get_response("Hello")
+    except HTTPException:
         pass
 
     assert sample("terngi_upstream_requests_total", service="groq", outcome=outcome) == before + 1
+
+
+def test_unhandled_exceptions_are_counted_as_500():
+    from fastapi.testclient import TestClient
+
+    import main
+
+    async def boom():
+        raise RuntimeError("unexpected")
+
+    main.app.add_api_route("/test-boom", boom)
+    client = TestClient(main.app, raise_server_exceptions=False)
+    before = sample("terngi_http_requests_total", method="GET", route="/test-boom", status="500")
+
+    assert client.get("/test-boom").status_code == 500
+    assert (
+        sample("terngi_http_requests_total", method="GET", route="/test-boom", status="500")
+        == before + 1
+    )

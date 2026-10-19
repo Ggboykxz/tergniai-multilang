@@ -9,9 +9,10 @@ from typing import List
 import httpx
 import pytest
 import respx
+from fastapi import HTTPException
 
 import config
-from services import azure_translator, groq_service
+from services import assistant, azure_translator, retry
 
 TRANSLATE_URL = config.AZURE_TRANSLATOR_ENDPOINT + "/translate"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -153,7 +154,7 @@ def test_backoff_jitter_stays_within_ceiling(sleeps):
 
 def test_backoff_ceiling_doubles_and_is_capped(sleeps, monkeypatch):
     # Pin jitter to its upper bound to check the ceiling at each attempt
-    monkeypatch.setattr(azure_translator.random, "uniform", lambda low, high: high)
+    monkeypatch.setattr(retry.random, "uniform", lambda low, high: high)
     ceilings = [azure_translator._retry_delay(n, None) for n in range(7)]
     assert ceilings == [0.5, 1.0, 2.0, 4.0, 8.0, 10.0, 10.0]
 
@@ -171,55 +172,48 @@ def test_parse_retry_after_past_date_is_zero():
     assert azure_translator._parse_retry_after(past) == 0.0
 
 
-@pytest.fixture
-def real_groq_client(monkeypatch):
-    """Build a real AsyncGroq client so the SDK's own retry logic runs"""
-    monkeypatch.setattr(groq_service, "_groq_client", None)
-    yield
-    groq_service._groq_client = None
-
-
 def groq_ok(reply: str = "Hello!") -> httpx.Response:
-    return httpx.Response(
-        200,
-        json={
-            "id": "chatcmpl-1",
-            "object": "chat.completion",
-            "created": 0,
-            "model": config.GROQ_MODEL,
-            "choices": [
-                {
-                    "index": 0,
-                    "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": reply},
-                }
-            ],
-        },
-    )
-
-
-# retry-after-ms keeps the SDK's own backoff to 1ms so the test stays fast
-FAST_RETRY = {"retry-after-ms": "1"}
+    return httpx.Response(200, json={"choices": [{"message": {"content": reply}}]})
 
 
 @respx.mock
-async def test_groq_retries_then_succeeds(real_groq_client, monkeypatch):
-    monkeypatch.setattr(config, "UPSTREAM_MAX_RETRIES", 2)
-    route = respx.post(GROQ_URL).mock(
-        side_effect=[httpx.Response(503, headers=FAST_RETRY), groq_ok()]
-    )
+async def test_llm_retries_transient_error_then_succeeds(sleeps):
+    route = respx.post(GROQ_URL).mock(side_effect=[httpx.Response(503), groq_ok()])
 
-    assert await groq_service.get_response("Hi") == "Hello!"
+    assert await assistant.get_response("Hi") == "Hello!"
     assert route.call_count == 2
+    assert len(sleeps) == 1
 
 
 @respx.mock
-async def test_groq_retry_exhaustion_returns_502(real_groq_client, monkeypatch):
+async def test_llm_retry_exhaustion_returns_502(sleeps, monkeypatch):
     monkeypatch.setattr(config, "UPSTREAM_MAX_RETRIES", 1)
-    route = respx.post(GROQ_URL).mock(return_value=httpx.Response(429, headers=FAST_RETRY))
+    route = respx.post(GROQ_URL).mock(return_value=httpx.Response(503))
 
-    with pytest.raises(groq_service.HTTPException) as exc:
-        await groq_service.get_response("Hi")
+    with pytest.raises(HTTPException) as exc:
+        await assistant.get_response("Hi")
 
     assert exc.value.status_code == 502
     assert route.call_count == 2  # first try + 1 retry
+
+
+@respx.mock
+async def test_llm_rate_limit_is_not_retried_in_place(sleeps):
+    # 429s are handled by rotating keys and models, not by sleeping on the same one
+    route = respx.post(GROQ_URL).mock(return_value=httpx.Response(429))
+
+    with pytest.raises(HTTPException):
+        await assistant.get_response("Hi")
+
+    assert route.call_count == 1
+    assert sleeps == []
+
+
+@respx.mock
+async def test_llm_client_errors_are_not_retried(sleeps):
+    route = respx.post(GROQ_URL).mock(return_value=httpx.Response(400))
+
+    with pytest.raises(HTTPException):
+        await assistant.get_response("Hi")
+
+    assert route.call_count == 1
