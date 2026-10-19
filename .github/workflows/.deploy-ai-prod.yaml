@@ -1,0 +1,115 @@
+name: Deploy FastAPI to EC2 (production)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    # Forks of the open-source repo never deploy
+    if: github.event.repository.fork == false
+    uses: ./.github/workflows/ci.yml
+
+  build_and_deploy:
+    needs: ci
+    runs-on: prod-hosted
+    env:
+      CONTAINER_NAME: terngi-ai-production
+      PORT: "8000"
+      IMAGE_TAG: prod
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          mask-password: true
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+        run: |
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY"
+          docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:$IMAGE_TAG-${GITHUB_SHA::7}" .
+          docker push "$IMAGE:$IMAGE_TAG"
+          docker push "$IMAGE:$IMAGE_TAG-${GITHUB_SHA::7}"
+          echo "IMAGE_URI=$IMAGE:$IMAGE_TAG-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Check and remove existing container
+        run: |
+          if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            echo "Found existing container, stopping and removing..."
+            docker stop "$CONTAINER_NAME"
+            docker rm "$CONTAINER_NAME"
+          else
+            echo "No existing container found, proceeding with deployment..."
+          fi
+
+      - name: Deploy to EC2
+        env:
+          AZURE_TRANSLATOR_KEY: ${{ secrets.AZURE_TRANSLATOR_KEY }}
+          AZURE_TRANSLATOR_LOCATION: ${{ vars.AZURE_TRANSLATOR_LOCATION || 'global' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+          API_KEYS: ${{ secrets.API_KEYS }}
+          RATE_LIMIT_PER_MINUTE: ${{ vars.RATE_LIMIT_PER_MINUTE || '60' }}
+        run: |
+          echo "Pulling image: $IMAGE_URI"
+          docker pull "$IMAGE_URI"
+          # Secrets are passed by name so their values never appear in the command line
+          docker run -d \
+            --name "$CONTAINER_NAME" \
+            -p "$PORT:8000" \
+            --restart always \
+            -e AZURE_TRANSLATOR_KEY \
+            -e AZURE_TRANSLATOR_LOCATION \
+            -e GROQ_API_KEY \
+            -e CORS_ORIGINS \
+            -e API_KEYS \
+            -e RATE_LIMIT_PER_MINUTE \
+            "$IMAGE_URI"
+
+      - name: Verify deployment
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$PORT/health"; then
+              echo "Container is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Container failed its health check"
+          docker logs "$CONTAINER_NAME"
+          exit 1
+
+  cleanup:
+    needs: build_and_deploy
+    runs-on: prod-hosted
+    if: always() && github.event.repository.fork == false
+
+    steps:
+      - name: Clean up old images
+        run: |
+          echo "Cleaning up dangling images older than 24h..."
+          docker image prune -f --filter "until=24h"

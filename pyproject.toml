@@ -1,0 +1,38 @@
+[project]
+name = "terngi-ai"
+version = "1.0.0"
+description = "Translation and conversational API for English and Nigerian languages (Yoruba, Hausa, Igbo)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["venv", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC"]
+ignore = [
+    "E501",  # line length is enforced by ruff format; long prose strings are fine
+    "S104",  # binding to 0.0.0.0 is intentional inside the container
+    "UP006", "UP007", "UP035", "UP045",  # keep typing.List / Optional style used in the codebase
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+filterwarnings = ["ignore::DeprecationWarning:fastapi.testclient", "ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+exclude = ["venv", ".venv", "tests"]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "venv/*", ".venv/*"]

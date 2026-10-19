@@ -1,0 +1,86 @@
+# Contributing to Terngi AI
+
+Thanks for helping! This guide explains how to propose changes.
+
+## Ground rules
+
+- Be kind and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+- **Never commit secrets.** Keys belong in `.env` (git-ignored) or in GitHub Actions secrets.
+  CI runs a secret scanner and will fail if it finds one.
+- Report security vulnerabilities privately (see [SECURITY.md](SECURITY.md)), not in issues.
+
+## Ways to contribute
+
+- Report bugs or request features through [GitHub Issues](../../issues) using the templates.
+- Improve translations or prompts for Yoruba, Hausa and Igbo — native-speaker review is especially valuable.
+- Add support for another language.
+- Improve docs and tests.
+
+For larger changes, open an issue first so we can agree on the approach before you write code.
+
+## Development setup
+
+```bash
+# 1. Fork the repo on GitHub, then clone your fork
+git clone https://github.com/<you>/tergniai-multilang.git
+cd tergniai-multilang
+
+# 2. Create a virtual environment (Python 3.10+)
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+# 3. Install dependencies and git hooks
+pip install -r requirements-dev.txt
+pre-commit install
+
+# 4. Configure keys (only needed to call the real services)
+cp .env.example .env
+
+# 5. Run the API
+uvicorn main:app --reload
+```
+
+The test suite mocks Azure and Groq, so **you do not need API keys to run tests**.
+
+## Making a change
+
+1. Create a branch from `main`: `git checkout -b fix/short-description`.
+2. Make your change, keeping it focused on one thing.
+3. Add or update tests in `tests/`.
+4. Run the checks:
+
+   ```bash
+   ruff check . && ruff format --check .
+   mypy .
+   pytest --cov
+   ```
+
+5. Commit using clear messages. We follow [Conventional Commits](https://www.conventionalcommits.org/)
+   (e.g. `feat: add Pidgin support`, `fix: handle empty Azure response`).
+6. Push and open a pull request against `main`, filling in the PR template.
+
+## Pull request checklist
+
+- CI is green (lint, types, tests on Python 3.10–3.13, Docker build, security scans).
+- Coverage stays at or above 85%.
+- New behaviour is documented in `README.md`.
+- No secrets, `.env` files or large binaries are committed.
+
+A maintainer will review your PR. We may ask for changes — that is a normal part of the process.
+
+## Code style
+
+- Formatting and linting: [Ruff](https://docs.astral.sh/ruff/) (configured in `pyproject.toml`).
+- Type hints on public functions; `mypy .` must pass.
+- Network calls must be async and have a timeout.
+- Do not return raw upstream error messages to clients; log them instead.
+
+## Adding a language
+
+1. Check the language is supported by [Azure Translator](https://learn.microsoft.com/azure/ai-services/translator/language-support).
+2. Add its code to `SUPPORTED_LANGUAGES` in `config.py`.
+3. Update the tests and the README.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
