@@ -59,6 +59,10 @@ The test suite mocks Azure and Groq, so **you do not need API keys to run tests*
    (e.g. `feat: add Pidgin support`, `fix: handle empty Azure response`).
 6. Push and open a pull request against `main`, filling in the PR template.
 
+> `main` is protected: every change goes through a pull request, all CI checks must
+> pass, and a maintainer must approve the PR before it can be merged. For first-time
+> contributors, a maintainer also approves the CI run before it starts.
+
 ## Pull request checklist
 
 - CI is green (lint, types, tests on Python 3.10–3.13, Docker build, security scans).

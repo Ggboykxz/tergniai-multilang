@@ -3,11 +3,25 @@
 [![CI](https://github.com/Terngi-AI/tergniai-multilang/actions/workflows/ci.yml/badge.svg)](https://github.com/Terngi-AI/tergniai-multilang/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%E2%80%933.13-blue)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Good first issues](https://img.shields.io/github/issues/Terngi-AI/tergniai-multilang/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/Terngi-AI/tergniai-multilang/labels/good%20first%20issue)
+[![GitHub stars](https://img.shields.io/github/stars/Terngi-AI/tergniai-multilang?style=social)](https://github.com/Terngi-AI/tergniai-multilang/stargazers)
+
+**Open-source translation and AI conversation for Nigerian languages.**
 
 A FastAPI service that translates between **English, Yoruba, Hausa and Igbo** and holds
 multilingual conversations with an LLM. Translation is powered by
 [Azure Translator](https://learn.microsoft.com/azure/ai-services/translator/) and responses
 by [Groq](https://groq.com/) (`openai/gpt-oss-120b` by default).
+
+## Why this project?
+
+More than 100 million people speak Yoruba, Hausa or Igbo, yet these languages are still
+poorly served by most software. Terngi AI gives developers a simple, self-hostable API to
+build apps, chatbots and services that speak to people in their own language, and it is
+built in the open so native speakers and developers can improve it together.
+
+⭐ **If this is useful to you, star the repo** — it helps more people find it.
 
 ## Features
 
@@ -171,9 +185,23 @@ and a dependency audit on every pull request.
 
 ## Contributing
 
-Contributions are welcome — new languages, bug fixes, docs and tests. Please read
-[CONTRIBUTING.md](CONTRIBUTING.md) and our [Code of Conduct](CODE_OF_CONDUCT.md).
-Report security issues privately as described in [SECURITY.md](SECURITY.md).
+Contributions of every size are welcome, and you don't need to be an expert:
+
+- 🟢 **New here?** Pick a [good first issue](https://github.com/Terngi-AI/tergniai-multilang/labels/good%20first%20issue).
+- 🗣️ **Speak Yoruba, Hausa, Igbo or another Nigerian language?** Help review translations
+  and build our [evaluation set](https://github.com/Terngi-AI/tergniai-multilang/labels/languages). Native speakers are our most valuable contributors.
+- 🛠️ **Experienced developer?** See [help wanted](https://github.com/Terngi-AI/tergniai-multilang/labels/help%20wanted) for streaming, Redis, speech and more.
+- 💬 **Questions or ideas?** Start a conversation in [Discussions](https://github.com/Terngi-AI/tergniai-multilang/discussions).
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) to get set up in a few minutes, and follow our
+[Code of Conduct](CODE_OF_CONDUCT.md). Report security issues privately as described in
+[SECURITY.md](SECURITY.md).
+
+### Contributors
+
+<a href="https://github.com/Terngi-AI/tergniai-multilang/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Terngi-AI/tergniai-multilang" alt="Contributors" />
+</a>
 
 ## License
 
