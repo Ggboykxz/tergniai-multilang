@@ -30,4 +30,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Azure and Groq calls are now async with timeouts (no longer block the event loop).
 - Upstream failures return `502`, missing configuration returns `503`.
 - Pinned dependency versions; removed the invalid `typing` requirement.
-- Deploy workflows run CI first, skip on forks, inject secrets as env vars and tag images by commit SHA.
+- Staging deploy workflow runs CI first, skips on forks, injects secrets as env vars and tags images by commit SHA.
+
+### Removed
+- Production deploy workflow (production deploys are not run from the open-source repo).
