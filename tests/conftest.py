@@ -25,10 +25,13 @@ def client() -> TestClient:
 
 
 @pytest.fixture(autouse=True)
-def reset_state():
-    """Clear in-memory cache and rate-limit state between tests"""
+def reset_state(monkeypatch):
+    """Clear in-memory state between tests; use Azure only unless a test opts into fallback"""
+    import config
+
+    monkeypatch.setattr(config, "TRANSLATION_PROVIDER", "azure")
     from middleware import rate_limiter
-    from services.azure_translator import translation_cache
+    from services.translator import translation_cache
 
     translation_cache.clear()
     rate_limiter.reset()

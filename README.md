@@ -41,7 +41,7 @@ built in the open so native speakers and developers can improve it together.
 ### Prerequisites
 
 - Python 3.10+
-- An Azure Translator key and a Groq API key
+- A Groq API key (an Azure Translator key is optional)
 
 ### Run locally
 
@@ -70,10 +70,11 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `AZURE_TRANSLATOR_KEY` | yes | — | Azure Translator subscription key |
+| `AZURE_TRANSLATOR_KEY` | no* | — | Azure Translator subscription key |
 | `AZURE_TRANSLATOR_ENDPOINT` | no | `https://api.cognitive.microsofttranslator.com` | Translator endpoint |
 | `AZURE_TRANSLATOR_LOCATION` | no | `global` | Azure resource region |
-| `GROQ_API_KEY` | yes (for `/v1/converse`) | — | Groq API key |
+| `GROQ_API_KEY` | yes* | — | Groq API key (chat, and translation fallback) |
+| `TRANSLATION_PROVIDER` | no | `auto` | `auto` (Azure, falling back to Groq), `azure` or `groq` |
 | `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Groq model ID |
 | `REQUEST_TIMEOUT` | no | `30` | Upstream timeout in seconds |
 | `UPSTREAM_MAX_RETRIES` | no | `2` | Retries for upstream `429`/`5xx`/connection errors (Azure and Groq); `0` disables |
@@ -90,7 +91,10 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `CORS_ORIGINS` | no | *(disabled)* | Comma-separated allowed origins |
 | `LOG_LEVEL` | no | `INFO` | Python log level |
 
-The app starts without keys; endpoints that need a missing key return `503`.
+\* You need at least one translation provider. With only `GROQ_API_KEY`, the LLM handles
+translation and language detection too. With both keys, Azure is used first and Groq takes
+over automatically if Azure fails. The app starts without keys; endpoints that need a missing
+key return `503`.
 
 ## API
 

@@ -136,24 +136,9 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
         ) from e
 
 
-async def translate_text(content: str, from_language: str, to_language: str) -> str:
-    """
-    Translate text using Azure Translator
-
-    Args:
-        content: Text to translate
-        from_language: Source language code
-        to_language: Target language code
-
-    Returns:
-        Translated text
-    """
-    return (await translate_batch([content], from_language, to_language))[0]
-
-
 async def translate_batch(texts: List[str], from_language: str, to_language: str) -> List[str]:
     """
-    Translate several texts in a single Azure request, reusing cached results
+    Translate several texts in a single Azure request
 
     Args:
         texts: Texts to translate

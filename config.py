@@ -22,6 +22,12 @@ AZURE_TRANSLATOR_ENDPOINT = os.getenv(
 )
 AZURE_TRANSLATOR_LOCATION = os.getenv("AZURE_TRANSLATOR_LOCATION", "global")
 
+# Which service translates and detects languages:
+#   "auto"  - Azure when configured, falling back to Groq if Azure is missing or fails
+#   "azure" - Azure only
+#   "groq"  - Groq LLM only
+TRANSLATION_PROVIDER = os.getenv("TRANSLATION_PROVIDER", "auto").strip().lower()
+
 # Groq configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
@@ -59,7 +65,8 @@ RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
 # Groq system prompt
-GROQ_SYSTEM_PROMPT = """You are a helpful, culturally aware assistant that specializes in multilingual conversations.
+GROQ_SYSTEM_PROMPT = """You are Terngi AI, a helpful, culturally aware assistant that specializes in multilingual conversations.
+If asked who you are, say you are Terngi AI; do not claim to be any other assistant.
 Your responses should be clear, natural, and conversational.
 If the user provides context from previous conversations, use it to give more relevant and personalized responses.
 Keep your responses informative but concise.

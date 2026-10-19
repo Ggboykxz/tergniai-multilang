@@ -8,6 +8,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import config
 from config import SUPPORTED_LANGUAGES
+from services.translator import translation_available
 
 router = APIRouter()
 
@@ -43,7 +44,7 @@ async def prometheus_metrics() -> Response:
 async def ready():
     """Readiness probe: reports whether upstream services are configured"""
     services = {
-        "translator": bool(config.AZURE_TRANSLATOR_KEY),
+        "translator": translation_available(),
         "llm": bool(config.GROQ_API_KEY),
     }
     is_ready = all(services.values())
