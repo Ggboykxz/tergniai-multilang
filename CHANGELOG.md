@@ -20,7 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `X-Request-ID` / `X-Process-Time-Ms` headers and structured request logs.
 - `/health/ready` readiness probe.
 - MIT license, contributing guide, code of conduct, security policy, issue/PR templates.
-- CI: lint, mypy, tests on Python 3.10–3.13, Docker smoke test, gitleaks, pip-audit, CodeQL, Dependabot.
+- CI: lint, mypy, tests on Python 3.10–3.13, Docker smoke test, gitleaks, pip-audit, Dependabot.
 - `/health` endpoint and Docker `HEALTHCHECK`.
 - Test suite with mocked upstream services.
 - Request size limits and optional CORS.
