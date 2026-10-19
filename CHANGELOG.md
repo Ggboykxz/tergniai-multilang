@@ -5,6 +5,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **Security workflow** on every PR and daily: ClamAV malware scan, Semgrep static analysis,
+  pip-audit + OSV-Scanner dependency audits, Trivy image/Dockerfile scan, and an OWASP ZAP attack
+  simulation against the running API. OpenSSF Scorecard runs weekly.
+- Fixed a rate-limit bypass: made-up `X-API-Key` values each got their own limit (and memory).
+  Only valid keys now count as a separate client, and idle clients are forgotten.
+- Request bodies over `MAX_REQUEST_BYTES` (1 MiB) are rejected with `413`, including streamed ones.
+- Security headers (CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS over HTTPS).
+- All GitHub Actions pinned to commit SHAs, checkout no longer keeps the token, scanner versions pinned.
+- Hash-locked dependencies (`requirements.lock`, `requirements-dev.lock`) installed with
+  `--require-hashes`. This also upgrades indirect dependencies with known vulnerabilities
+  (anyio 4.15.1, idna 3.20, pygments 2.21.0).
+
+### Removed
+- Dependabot. Dependency vulnerabilities are caught by the daily security scan instead.
+
 ### Added
 - Prometheus metrics at `GET /metrics`: requests by route and status, latency, upstream
   calls per provider, translation cache hits/misses and rate-limited requests (#35).

@@ -30,7 +30,7 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
 # 3. Install dependencies and git hooks
-pip install -r requirements-dev.txt
+pip install --require-hashes -r requirements-dev.lock
 pre-commit install
 
 # 4. Configure keys (only needed to call the real services)
@@ -80,6 +80,7 @@ maintainer must approve.
 - Coverage stays at or above 85%.
 - New behaviour is documented in `README.md`.
 - No secrets, `.env` files or large binaries are committed.
+- The Security workflow passes (malware, code, dependency, container and attack scans).
 
 A maintainer will review your PR. We may ask for changes — that is a normal part of the process.
 
@@ -89,6 +90,31 @@ A maintainer will review your PR. We may ask for changes — that is a normal pa
 - Type hints on public functions; `mypy .` must pass.
 - Network calls must be async and have a timeout.
 - Do not return raw upstream error messages to clients; log them instead.
+
+## Security checks and dependencies
+
+Besides CI, the [Security workflow](.github/workflows/security.yml) runs on every PR: an antivirus
+scan (ClamAV), static analysis (Semgrep), dependency audits (pip-audit, OSV-Scanner), a container
+scan (Trivy) and an attack simulation against the API (OWASP ZAP). If one fails, open the job log
+to see why; ask in the PR if you think it's a false positive.
+
+This project doesn't use Dependabot, so dependencies are updated by hand:
+
+- **Python packages:** every package, including indirect ones, is locked to an exact version
+  with checksums in `requirements.lock` (used by Docker) and `requirements-dev.lock` (used by CI).
+  After changing `requirements*.txt`, or to pick up security fixes, regenerate both and audit them:
+
+  ```bash
+  uv pip compile requirements.txt --universal --python-version 3.10 --generate-hashes -o requirements.lock
+  uv pip compile requirements-dev.txt --universal --python-version 3.10 --generate-hashes -o requirements-dev.lock
+  pip-audit --strict --require-hashes --disable-pip -r requirements-dev.lock
+  ```
+
+  Add `--upgrade` to the compile commands to move everything to the latest compatible versions.
+- **GitHub Actions:** actions are pinned to a full commit SHA with the version in a comment, e.g.
+  `actions/checkout@<sha> # v4.4.0`. To update one, look up the new release's commit
+  (`gh api repos/actions/checkout/commits/v4.5.0 --jq .sha`) and replace both the SHA and the comment.
+- **Scanner versions** are set at the top of `security.yml`.
 
 ## Adding a language
 
