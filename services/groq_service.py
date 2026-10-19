@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from groq import AsyncGroq
 
 import config
+import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,13 @@ async def get_response(content: str, memory_context: Optional[List[Dict[str, Any
 
     # Call Groq API
     try:
-        completion = await client.chat.completions.create(
-            model=config.GROQ_MODEL,
-            messages=messages,  # type: ignore[arg-type]
-            temperature=0.7,
-            max_tokens=1024,
-        )
+        with metrics.track_upstream("groq"):
+            completion = await client.chat.completions.create(
+                model=config.GROQ_MODEL,
+                messages=messages,  # type: ignore[arg-type]
+                temperature=0.7,
+                max_tokens=1024,
+            )
     except Exception as e:
         logger.exception("Error calling Groq")
         raise HTTPException(

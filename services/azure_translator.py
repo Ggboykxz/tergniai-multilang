@@ -10,6 +10,7 @@ import httpx
 from fastapi import HTTPException
 
 import config
+import metrics
 from services.cache import TTLCache
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 translation_cache = TTLCache(max_items=config.CACHE_MAX_ITEMS, ttl=config.CACHE_TTL_SECONDS)
 
 
+@metrics.timed_upstream("azure")
 async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> Any:
     """
     Send a request to Azure Translator and return the parsed JSON body
@@ -104,6 +106,8 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
         translation_cache.get((from_language, to_language, text)) for text in texts
     ]
     missing = [i for i, result in enumerate(results) if result is None]
+    metrics.CACHE_LOOKUPS.labels("hit").inc(len(texts) - len(missing))
+    metrics.CACHE_LOOKUPS.labels("miss").inc(len(missing))
 
     if missing:
         data = await _call_azure(
