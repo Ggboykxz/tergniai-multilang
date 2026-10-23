@@ -59,12 +59,22 @@ async def get(conversation_id: str, owner: str) -> Optional[List[Message]]:
 
 
 async def append(conversation_id: str, owner: str, *messages: Message) -> None:
-    """Add messages, keeping only the most recent CONVERSATION_MAX_MESSAGES"""
-    entry = await _load(conversation_id)
-    if entry is None or entry["owner"] != _owner_hash(owner):
-        return
-    entry["messages"] = (entry["messages"] + list(messages))[-config.CONVERSATION_MAX_MESSAGES :]
-    await _save(conversation_id, entry)
+    """Atomically add messages, keeping only the most recent CONVERSATION_MAX_MESSAGES"""
+    owner_hash = _owner_hash(owner)
+
+    def mutate(entry: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if entry is None or entry.get("owner") != owner_hash:
+            return None
+        updated = dict(entry)
+        updated["messages"] = (list(entry.get("messages", [])) + list(messages))[
+            -config.CONVERSATION_MAX_MESSAGES :
+        ]
+        return updated
+
+    try:
+        await _store.update(conversation_id, mutate)
+    except StoreError as e:
+        raise _unavailable(e) from e
 
 
 async def delete(conversation_id: str, owner: str) -> bool:
