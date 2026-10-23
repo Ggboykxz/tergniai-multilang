@@ -206,14 +206,20 @@ def test_chat_returns_503_when_conversation_storage_is_down(client, redis_down):
 
 
 def test_readiness_reports_redis(client, redis):
-    assert client.get("/health/ready").json()["services"]["storage"] is True
-
-
-def test_readiness_fails_when_redis_is_down(client, redis_down):
     response = client.get("/health/ready")
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+    assert response.json()["services"]["storage"] is True
+
+
+def test_readiness_degrades_when_redis_is_down(client, redis_down):
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
     assert response.json()["services"]["storage"] is False
+    assert response.json()["services"]["translator"] is True
 
 
 def test_in_memory_storage_without_redis_url(monkeypatch):
