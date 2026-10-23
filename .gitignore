@@ -23,6 +23,9 @@ env/
 coverage.xml
 htmlcov/
 
+# Node tooling (ECC / OpenCode plugin)
+node_modules/
+
 # Editors / OS
 .vscode/
 .idea/
