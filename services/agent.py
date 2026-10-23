@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import HTTPException
 
 import config
-from services import llm, translator
+from services import deadline, llm, translator
 from services.languages import resolve_source_language
 
 logger = logging.getLogger(__name__)
@@ -274,6 +274,7 @@ async def run_agent(
     if not llm.is_configured(config.AGENT_PROVIDERS, kind="openai"):
         raise HTTPException(status_code=503, detail="Agent is not configured")
 
+    deadline.check()
     source = await resolve_source_language(message, language)
     reply = reply_language or source
 
@@ -301,6 +302,7 @@ async def run_agent(
     tools = tool_definitions()
 
     for _ in range(config.AGENT_MAX_STEPS):
+        deadline.check()
         streamed = False
 
         async def on_token(text: str) -> None:
@@ -317,11 +319,14 @@ async def run_agent(
             temperature=0.3,
             on_token=on_token if on_event is not None else None,
         )
+        deadline.check()
         if step["tool_calls"] and streamed and on_event is not None:
             await on_event("discard", {})
         if not step["tool_calls"]:
+            answer = await _finalise_answer(step["content"], reply, steps)
+            deadline.check()
             return {
-                "answer": await _finalise_answer(step["content"], reply, steps),
+                "answer": answer,
                 "language": source,
                 "reply_language": reply,
                 "steps": steps,
@@ -335,6 +340,7 @@ async def run_agent(
             }
         )
         for index, call in enumerate(step["tool_calls"]):
+            deadline.check()
             function = call.get("function") or {}
             name = str(function.get("name", ""))
             raw_arguments = function.get("arguments", "{}")
@@ -367,8 +373,11 @@ async def run_agent(
         messages,
         parse=lambda text: _parse_step({"content": text})["content"],
     )
+    deadline.check()
+    answer = await _finalise_answer(answer, reply, steps)
+    deadline.check()
     return {
-        "answer": await _finalise_answer(answer, reply, steps),
+        "answer": answer,
         "language": source,
         "reply_language": reply,
         "steps": steps,

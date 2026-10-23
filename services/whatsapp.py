@@ -8,7 +8,6 @@ Webhooks are only accepted with a valid signature from Meta. Phone numbers are s
 as hashes, and memory expires after WHATSAPP_MEMORY_TTL_SECONDS.
 """
 
-import asyncio
 import hashlib
 import hmac
 import logging
@@ -19,7 +18,7 @@ import httpx
 from fastapi import HTTPException
 
 import config
-from services import conversations
+from services import conversations, deadline
 from services.agent import run_agent
 from services.retry import RETRY_STATUS_CODES, retry_delay
 from services.store import StoreError, make_store
@@ -113,8 +112,14 @@ async def _post(payload: Dict[str, Any]) -> str:
     body = {"messaging_product": "whatsapp", **payload}
     async with httpx.AsyncClient(timeout=config.REQUEST_TIMEOUT) as client:
         for attempt in range(config.UPSTREAM_MAX_RETRIES + 1):
+            deadline.consume_attempt()
             try:
-                response = await client.post(url, json=body, headers=headers)
+                response = await client.post(
+                    url,
+                    json=body,
+                    headers=headers,
+                    timeout=deadline.timeout(config.REQUEST_TIMEOUT),
+                )
             except httpx.HTTPError as e:
                 raise WhatsAppError(f"Can't reach WhatsApp: {type(e).__name__}") from e
             if response.status_code not in RETRY_STATUS_CODES:
@@ -122,7 +127,7 @@ async def _post(payload: Dict[str, Any]) -> str:
             delay = retry_delay(attempt, response)
             if delay is None or attempt == config.UPSTREAM_MAX_RETRIES:
                 break
-            await asyncio.sleep(delay)
+            await deadline.sleep(delay)
     if response.status_code != 200:
         try:
             detail = response.json().get("error", {}).get("message", "")

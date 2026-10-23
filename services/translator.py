@@ -13,7 +13,7 @@ from fastapi import HTTPException
 
 import config
 import metrics
-from services import assistant, azure_translator, llm
+from services import assistant, azure_translator, deadline, llm
 from services.store import StoreError, make_store
 
 logger = logging.getLogger(__name__)
@@ -67,10 +67,13 @@ async def _run_chain(
     last_error: Optional[HTTPException] = None
 
     for name in providers:
+        deadline.check()
         if not _is_configured(name, languages):
             continue
         try:
-            return await (azure_call() if name == "azure" else llm_call(name))
+            result = await (azure_call() if name == "azure" else llm_call(name))
+            deadline.check()
+            return result
         except HTTPException as e:
             if e.status_code < 500:
                 raise
@@ -113,6 +116,7 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
     if from_language == to_language:
         return list(texts)
 
+    deadline.check()
     keys = [_cache_key(from_language, to_language, text) for text in texts]
     results: List[Optional[str]] = [await _cache_get(key) for key in keys]
     missing = [i for i, result in enumerate(results) if result is None]
@@ -128,6 +132,7 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
             languages=(from_language, to_language),
         )
         for i, text in zip(missing, translated, strict=True):
+            deadline.check()
             results[i] = text
             await _cache_set(keys[i], text)
 
