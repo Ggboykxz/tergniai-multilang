@@ -281,6 +281,7 @@ def test_ready_when_configured(client):
     response = client.get("/health/ready")
 
     assert response.status_code == 200
+    assert response.json()["status"] == "ready"
     assert response.json()["services"] == {
         "translator": True,
         "llm": True,
@@ -289,10 +290,25 @@ def test_ready_when_configured(client):
     }
 
 
+def test_ready_is_degraded_when_agent_is_not_configured(client, monkeypatch):
+    monkeypatch.setattr(config, "AGENT_PROVIDERS", [])
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert response.json()["services"]["agent"] is False
+    assert response.json()["services"]["translator"] is True
+
+
 def test_not_ready_without_keys(client, monkeypatch):
     monkeypatch.setattr(config, "CHAT_PROVIDERS", [])
+    monkeypatch.setattr(config, "AGENT_PROVIDERS", [])
+    monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
 
     response = client.get("/health/ready")
 
     assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert response.json()["services"]["translator"] is False
     assert response.json()["services"]["llm"] is False
