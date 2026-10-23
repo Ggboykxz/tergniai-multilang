@@ -6,12 +6,13 @@ limits and conversations, and a restart forgets them. With Redis they are shared
 restarts.
 """
 
+import asyncio
 import json
 import logging
 import time
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import config
 from services.cache import TTLCache
@@ -74,6 +75,12 @@ class KeyValueStore(ABC):
     async def set(self, key: str, value: Any) -> None: ...
 
     @abstractmethod
+    async def update(
+        self, key: str, mutator: Callable[[Optional[Any]], Optional[Any]]
+    ) -> Optional[Any]:
+        """Atomically read, transform and write a value; return None to leave it unchanged"""
+
+    @abstractmethod
     async def delete(self, key: str) -> None: ...
 
     @abstractmethod
@@ -85,12 +92,23 @@ class MemoryStore(KeyValueStore):
 
     def __init__(self, max_items: int, ttl: float) -> None:
         self._cache = TTLCache(max_items=max_items, ttl=ttl)
+        self._lock = asyncio.Lock()
 
     async def get(self, key: str) -> Optional[Any]:
         return self._cache.get(key)
 
     async def set(self, key: str, value: Any) -> None:
         self._cache.set(key, value)
+
+    async def update(
+        self, key: str, mutator: Callable[[Optional[Any]], Optional[Any]]
+    ) -> Optional[Any]:
+        async with self._lock:
+            current = self._cache.get(key)
+            updated = mutator(current)
+            if updated is not None:
+                self._cache.set(key, updated)
+            return updated
 
     async def delete(self, key: str) -> None:
         self._cache.delete(key)
@@ -125,6 +143,42 @@ class RedisStore(KeyValueStore):
             await get_redis().set(
                 self._key(key), json.dumps(value, ensure_ascii=False), ex=max(1, int(self.ttl))
             )
+        except Exception as e:
+            raise StoreError(str(e)) from e
+
+    async def update(
+        self, key: str, mutator: Callable[[Optional[Any]], Optional[Any]]
+    ) -> Optional[Any]:
+        if self.ttl <= 0:
+            return None
+        try:
+            redis = get_redis()
+            redis_key = self._key(key)
+            for _ in range(5):
+                try:
+                    async with redis.pipeline(transaction=True) as pipe:
+                        await pipe.watch(redis_key)
+                        raw = await pipe.get(redis_key)
+                        current = None if raw is None else json.loads(raw)
+                        updated = mutator(current)
+                        if updated is None:
+                            await pipe.unwatch()
+                            return None
+                        pipe.multi()
+                        pipe.set(
+                            redis_key,
+                            json.dumps(updated, ensure_ascii=False),
+                            ex=max(1, int(self.ttl)),
+                        )
+                        await pipe.execute()
+                        return updated
+                except Exception as e:
+                    if type(e).__name__ == "WatchError":
+                        continue
+                    raise
+            raise StoreError("concurrent update conflict")
+        except StoreError:
+            raise
         except Exception as e:
             raise StoreError(str(e)) from e
 
