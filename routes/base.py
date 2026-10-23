@@ -43,15 +43,22 @@ async def prometheus_metrics() -> Response:
 
 @router.get("/health/ready")
 async def ready():
-    """Readiness probe: reports whether upstream services and shared storage are usable"""
+    """
+    Readiness probe for translation, chat and the optional agent path.
+
+    Optional dependencies do not fail readiness: the cache fails open and the agent has its
+    own endpoint. A degraded status is returned so operators can alert on it without
+    draining every replica when Redis has a blip.
+    """
     services = {
         "translator": translation_available(),
         "llm": llm.is_configured(config.CHAT_PROVIDERS),
         "agent": llm.is_configured(config.AGENT_PROVIDERS, kind="openai"),
         "storage": await store.ping(),
     }
-    is_ready = all(services.values())
+    core_ready = services["translator"] or services["llm"] or services["agent"]
+    status = "not_ready" if not core_ready else "ready" if all(services.values()) else "degraded"
     return JSONResponse(
-        status_code=200 if is_ready else 503,
-        content={"status": "ready" if is_ready else "not_ready", "services": services},
+        status_code=200 if core_ready else 503,
+        content={"status": status, "services": services},
     )
