@@ -222,21 +222,25 @@ CHAT_CSP = (
 NO_CSP_PATHS = {"/docs", "/redoc", "/docs/oauth2-redirect"}
 
 
+def security_headers_for(path: str, scheme: str = "http") -> Dict[str, str]:
+    """Headers for every response, including errors that bypass the middleware"""
+    headers = dict(SECURITY_HEADERS)
+    if path == "/chat":
+        headers["Content-Security-Policy"] = CHAT_CSP
+    elif path not in NO_CSP_PATHS:
+        headers["Content-Security-Policy"] = API_CSP
+
+    # HSTS only means something over HTTPS (directly or behind a TLS-terminating proxy)
+    if scheme == "https":
+        headers["Strict-Transport-Security"] = "max-age=31536000"
+    return headers
+
+
 async def security_headers(request: Request, call_next: CallNext) -> Response:
     """Add hardening headers to every response"""
     response = await call_next(request)
-    for name, value in SECURITY_HEADERS.items():
+    for name, value in security_headers_for(request.url.path, request.url.scheme).items():
         response.headers.setdefault(name, value)
-
-    path = request.url.path
-    if path == "/chat":
-        response.headers.setdefault("Content-Security-Policy", CHAT_CSP)
-    elif path not in NO_CSP_PATHS:
-        response.headers.setdefault("Content-Security-Policy", API_CSP)
-
-    # HSTS only means something over HTTPS (directly or behind a TLS-terminating proxy)
-    if request.url.scheme == "https":
-        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     return response
 
 

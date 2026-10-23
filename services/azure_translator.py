@@ -171,6 +171,10 @@ async def detect_language(content: str) -> Tuple[str, float]:
     """
     data = await _call_azure("/detect", {}, [content])
     try:
-        return data[0]["language"], float(data[0].get("score", 0.0))
+        language = data[0]["language"]
+        score = float(data[0].get("score", 0.0))
     except (LookupError, TypeError, ValueError) as e:
         raise HTTPException(status_code=502, detail="No detection result received") from e
+    if not isinstance(language, str) or not language.strip():
+        raise HTTPException(status_code=502, detail="No detection result received")
+    return language, score

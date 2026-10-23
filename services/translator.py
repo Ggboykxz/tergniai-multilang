@@ -174,4 +174,6 @@ async def detect_language(content: str) -> Tuple[str, float]:
         lambda: azure_translator.detect_language(content),
         lambda name: assistant.detect_language(content, name),
     )
+    if not isinstance(language, str) or not language.strip():
+        raise HTTPException(status_code=502, detail="Invalid language detection result")
     return canonical_language(language), score
