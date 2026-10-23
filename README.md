@@ -146,6 +146,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `MAX_BATCH_CHARACTERS` | no | `50000` | Max total characters per batch |
 | `MAX_REQUEST_BYTES` | no | `1048576` | Largest request body accepted; bigger requests get `413` |
 | `CORS_ORIGINS` | no | *(disabled)* | Comma-separated allowed origins |
+| `FORWARDED_ALLOW_IPS` | no | `127.0.0.1,::1` | Proxy IPs/CIDRs trusted to set `X-Forwarded-For` |
 | `LOG_LEVEL` | no | `INFO` | Python log level |
 
 \* You need at least one provider. Built-in provider names are `groq`, `openrouter`,
@@ -168,6 +169,15 @@ OPENROUTER_API_KEYS=sk-or-...
 OPENROUTER_MODELS=meta-llama/llama-3.3-70b-instruct
 TRANSLATION_PROVIDERS=morena,groq,openrouter
 ```
+
+### Running behind a reverse proxy
+
+Set `FORWARDED_ALLOW_IPS` to the proxy's IPs or CIDRs (comma-separated), for example the
+ALB/Nginx address or the Docker network subnet. Uvicorn trusts `X-Forwarded-For` only from
+those peers; requests from anywhere else keep their direct peer address, so a client cannot
+spoof its identity. Without this setting, every anonymous client behind the proxy shares one
+rate-limit bucket and one conversation owner. Do not use `*` unless the API port is reachable
+only through the proxy.
 
 ## API
 
