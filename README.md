@@ -95,6 +95,11 @@ Starts the API with Redis, so the cache, rate limits and chat conversations are 
 survive restarts. The Redis service also has a 512 MB `volatile-lru` limit as a safety net;
 conversation storage independently enforces `CONVERSATION_MAX_ITEMS`.
 
+### Deploy a public demo
+
+See [docs/DEPLOY.md](docs/DEPLOY.md) for current free/cheap hosting options (Render,
+Hugging Face Spaces, Fly.io), secret/rate-limit settings, and free-tier caveats.
+
 ### Run with MORENA (free, no API keys needed)
 
 ```bash
