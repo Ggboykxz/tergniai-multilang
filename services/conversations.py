@@ -17,7 +17,12 @@ from services.store import StoreError, make_store
 
 Message = Dict[str, str]
 
-_store = make_store("conversation", config.CONVERSATION_MAX_ITEMS, config.CONVERSATION_TTL_SECONDS)
+_store = make_store(
+    "conversation",
+    config.CONVERSATION_MAX_ITEMS,
+    config.CONVERSATION_TTL_SECONDS,
+    enforce_max_items=True,
+)
 
 
 def _owner_hash(owner: str) -> str:
