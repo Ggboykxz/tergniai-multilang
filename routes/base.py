@@ -2,13 +2,15 @@
 Base routes for the Terngi Translation API
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import config
+import middleware
 from config import SUPPORTED_LANGUAGES
-from services import llm, store
+from models import UsageResponse, UsageStats
+from services import llm, store, usage
 from services.translator import translation_available
 
 router = APIRouter()
@@ -33,6 +35,49 @@ async def get_supported_languages():
 async def health():
     """Liveness probe used by Docker and load balancers"""
     return {"status": "ok"}
+
+
+@router.get("/v1/usage", response_model=UsageResponse)
+async def usage_report(http_request: Request):
+    """
+    Daily usage for the calling API key
+
+    Returns the counters for today (and yesterday, when it has any) plus the configured
+    daily quota and how many requests are left. Only a valid API key is counted; without
+    API keys configured there is no per-key usage to report.
+    """
+    from datetime import date, timedelta
+
+    api_key = middleware.authenticated_key(http_request)
+    if api_key is None:
+        return UsageResponse(usage=[])
+
+    label = usage.key_label(api_key)
+    today = usage.today()
+    today_usage = await usage.snapshot(label, today)
+    days = [today]
+
+    yesterday = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    yesterday_usage = await usage.snapshot(label, yesterday)
+    if yesterday_usage.requests or yesterday_usage.upstream_calls:
+        days.insert(0, yesterday)
+
+    stats = []
+    for day in days:
+        current = today_usage if day == today else yesterday_usage
+        stats.append(UsageStats(date=day, total_tokens=current.total_tokens, **current.as_dict()))
+
+    quota = usage.quota_for(api_key)
+    remaining = None
+    if quota is not None:
+        remaining = max(0, quota - today_usage.requests)
+
+    return UsageResponse(
+        usage=stats,
+        quota=quota,
+        remaining=remaining,
+        resets_at=usage.reset_at() if quota is not None else None,
+    )
 
 
 @router.get("/metrics", include_in_schema=False)
