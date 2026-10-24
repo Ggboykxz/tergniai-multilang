@@ -82,6 +82,26 @@ def test_bad_rating_without_correction_is_still_stored(client, tmp_path, monkeyp
     assert stored(path)[0]["rating"] == "bad"
 
 
+def test_file_storage_refuses_records_past_the_cap(client, tmp_path, monkeypatch):
+    path = tmp_path / "feedback.jsonl"
+    monkeypatch.setattr(config, "FEEDBACK_FILE", str(path))
+    monkeypatch.setattr(config, "FEEDBACK_MAX_RECORDS", 2)
+
+    assert client.post("/v1/feedback", json=payload()).status_code == 200
+    assert client.post("/v1/feedback", json=payload()).status_code == 200
+
+    full = client.post("/v1/feedback", json=payload())
+
+    assert full.status_code == 507
+    assert full.json()["code"] == "insufficient_storage"
+    assert len(stored(path)) == 2
+
+    # 0 disables the cap for an operator who rotates the file themselves
+    monkeypatch.setattr(config, "FEEDBACK_MAX_RECORDS", 0)
+    assert client.post("/v1/feedback", json=payload()).status_code == 200
+    assert len(stored(path)) == 3
+
+
 def test_invalid_rating_is_rejected(client):
     response = client.post("/v1/feedback", json=payload(rating="maybe"))
 
@@ -198,3 +218,17 @@ async def test_feedback_is_appended_to_redis(monkeypatch):
 
     assert [json.loads(line)["id"] for line in lines] == [first, second]
     assert [record["rating"] for record in records] == ["good", "bad"]
+
+
+async def test_redis_storage_drops_the_oldest_records_at_the_cap(monkeypatch):
+    fake = fakeredis.FakeAsyncRedis(decode_responses=True)
+    monkeypatch.setattr(config, "REDIS_URL", "redis://fake")
+    monkeypatch.setattr(config, "FEEDBACK_MAX_RECORDS", 2)
+    store.set_redis(fake)
+    try:
+        ids = [await feedback.append({"rating": "good", "consent": True}) for _ in range(3)]
+        lines = await fake.lrange(f"{config.REDIS_PREFIX}feedback", 0, -1)
+    finally:
+        store.set_redis(None)
+
+    assert [json.loads(line)["id"] for line in lines] == ids[1:]

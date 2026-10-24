@@ -304,6 +304,9 @@ CACHE_MAX_ITEMS = int(os.getenv("CACHE_MAX_ITEMS", "1000"))
 # Opt-in translation feedback. With REDIS_URL set, records are appended to a Redis list;
 # otherwise they are appended to this JSONL file. Keep the file out of version control.
 FEEDBACK_FILE = os.getenv("FEEDBACK_FILE", "feedback.jsonl")
+# Maximum number of feedback records kept. Redis drops the oldest records beyond the cap;
+# the JSONL file refuses new records when full. 0 disables the cap.
+FEEDBACK_MAX_RECORDS = int(os.getenv("FEEDBACK_MAX_RECORDS", "10000"))
 
 # Client authentication: comma-separated keys accepted in the X-API-Key header.
 # Leave empty to disable authentication (e.g. for local development).

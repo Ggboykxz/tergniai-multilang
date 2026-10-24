@@ -20,15 +20,25 @@ API keys, IP addresses and other client identifiers are **not** stored in feedba
 submit personal, confidential or sensitive text: accepted feedback may be published as part
 of the open evaluation set. Users should only opt in after seeing this notice.
 
+Before anything is published, the maintainers review the records and remove personal data.
+Publication is never automatic: a stored record is a candidate for review, not a promise
+that its text will appear in the evaluation set.
+
 ## Storage
 
 Feedback is append-only. Records are never updated or deleted by the API.
 
 - With `REDIS_URL` set, records are appended to the Redis list
-  `<REDIS_PREFIX>feedback` and are shared by every replica.
+  `<REDIS_PREFIX>feedback` and are shared by every replica. **Use Redis in production**:
+  a JSONL file lives inside the container and is lost on the next deploy.
 - Without Redis, records are appended as JSON Lines to `FEEDBACK_FILE` (default
   `feedback.jsonl`). Mount a persistent volume for this file in production and keep it out of
   version control.
+
+`FEEDBACK_MAX_RECORDS` (default `10000`) bounds the store. With Redis, the oldest records
+are dropped when the list reaches the cap. With a JSONL file, new records are refused with
+`507` until the operator rotates or removes the file. `0` disables the cap, which is not
+recommended for a public deployment.
 
 The endpoint is under `/v1`, so it uses the same API-key authentication and per-client rate
 limit as the other API routes.

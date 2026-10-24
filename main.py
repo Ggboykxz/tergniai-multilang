@@ -73,6 +73,7 @@ _ERROR_CODES = {
     502: "upstream_error",
     503: "service_unavailable",
     504: "gateway_timeout",
+    507: "insufficient_storage",
 }
 
 

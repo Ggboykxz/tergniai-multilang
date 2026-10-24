@@ -49,6 +49,9 @@ async def submit_feedback(request: FeedbackRequest):
 
     try:
         await feedback.append(record)
+    except feedback.FeedbackFull:
+        logger.warning("Feedback storage is full; rejecting a new record")
+        raise HTTPException(status_code=507, detail="Feedback storage is full") from None
     except feedback.FeedbackError:
         logger.exception("Feedback storage is unavailable")
         raise HTTPException(status_code=503, detail="Feedback storage is unavailable") from None

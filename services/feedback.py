@@ -23,11 +23,24 @@ class FeedbackError(Exception):
     """Feedback storage could not be reached"""
 
 
+class FeedbackFull(FeedbackError):
+    """The feedback store reached FEEDBACK_MAX_RECORDS and cannot accept more"""
+
+
 def _redis_key() -> str:
     return f"{config.REDIS_PREFIX}feedback"
 
 
-def _append_file(path: Path, line: str) -> None:
+def _count_lines(path: Path) -> int:
+    if not path.exists():
+        return 0
+    with path.open("rb") as handle:
+        return sum(1 for _ in handle)
+
+
+def _append_file(path: Path, line: str, max_records: int) -> None:
+    if max_records > 0 and _count_lines(path) >= max_records:
+        raise FeedbackFull("feedback storage is full")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(line)
@@ -50,10 +63,19 @@ async def append(record: Dict[str, Any]) -> str:
         **record,
     }
     line = json.dumps(stored, ensure_ascii=False)
+    limit = config.FEEDBACK_MAX_RECORDS
 
     if using_redis():
         try:
-            await get_redis().rpush(_redis_key(), line)
+            redis = get_redis()
+            if limit > 0:
+                # Append and trim keep the newest records without an unbounded list
+                async with redis.pipeline(transaction=True) as pipe:
+                    pipe.rpush(_redis_key(), line)
+                    pipe.ltrim(_redis_key(), -limit, -1)
+                    await pipe.execute()
+            else:
+                await redis.rpush(_redis_key(), line)
         except Exception as e:
             raise FeedbackError(str(e)) from e
         return feedback_id
@@ -61,7 +83,9 @@ async def append(record: Dict[str, Any]) -> str:
     path = Path(config.FEEDBACK_FILE)
     try:
         async with _file_lock:
-            await asyncio.to_thread(_append_file, path, line)
+            await asyncio.to_thread(_append_file, path, line, limit)
+    except FeedbackFull:
+        raise
     except OSError as e:
         raise FeedbackError(str(e)) from e
     return feedback_id
