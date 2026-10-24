@@ -19,8 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 import config
 import metrics
 from services import deadline as request_deadline
-from services import translator
-from services import usage
+from services import translator, usage
 from services.store import RedisRateLimiter, using_redis
 
 logger = logging.getLogger(__name__)
