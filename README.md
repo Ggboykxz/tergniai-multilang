@@ -166,6 +166,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `USAGE_MAX_ITEMS` | no | `10000` | Maximum per-key usage entries kept |
 | `METRICS_TOKEN` | no | *(off)* | Optional dedicated bearer token for `/metrics` (`Authorization: Bearer ...`), so the monitoring stack needs no API key |
 | `ALLOW_UNAUTHENTICATED` | no | `false` | Permit startup with `API_KEYS` empty (local development only; the app refuses to start otherwise) |
+| `HASH_SECRET` | **yes** | - | Keying secret (HMAC-SHA256) for personal identifiers: WhatsApp phone numbers and IP-based conversation owners. The app refuses to start without it; generate one with `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `WHATSAPP_*` | no | *(off)* | WhatsApp bot settings, see [docs/WHATSAPP.md](docs/WHATSAPP.md) |
 | `RATE_LIMIT_PER_MINUTE` | no | `60` | Requests per minute per client; `0` disables |
 | `AUTH_FAILURES_PER_MINUTE` | no | `10` | Failed API-key attempts allowed per IP per minute; `0` disables |
@@ -206,6 +207,15 @@ OPENROUTER_API_KEYS=sk-or-...
 OPENROUTER_MODELS=meta-llama/llama-3.3-70b-instruct
 TRANSLATION_PROVIDERS=morena,groq,openrouter
 ```
+
+### Upgrading
+
+**Upgrading an existing deployment?** `HASH_SECRET` is now **required**: the app
+refuses to start without it, because WhatsApp phone numbers and IP-based conversation
+owners are keyed with HMAC-SHA256 under that secret (a plain unsalted hash of a phone
+number or an IP can be reversed by brute force). Generate one **before** upgrading —
+`python -c "import secrets; print(secrets.token_hex(32))"` — and set it in your
+environment or `.env`.
 
 ### Running behind a reverse proxy
 

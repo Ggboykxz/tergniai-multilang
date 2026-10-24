@@ -14,6 +14,12 @@ services:
       REDIS_URL: redis://redis:6379/0
       # Comma-separated proxy IPs/CIDRs allowed to set X-Forwarded-For
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}
+      # This is a local stack: keyless by default, as before the startup check in #83.
+      # Set API_KEYS in .env (and drop this) for anything more than you trust.
+      ALLOW_UNAUTHENTICATED: ${ALLOW_UNAUTHENTICATED:-true}
+      # Keying secret for personal identifiers (HMAC-SHA256). Local default so the
+      # quick start works; set your own HASH_SECRET in .env for anything more than you trust.
+      HASH_SECRET: ${HASH_SECRET:-local-dev-only-hash-secret}
     depends_on:
       - redis
     restart: unless-stopped
