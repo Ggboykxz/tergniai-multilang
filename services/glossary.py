@@ -34,6 +34,7 @@ def entries_for(glossary: Optional[Glossary], target_language: str) -> List[Entr
 
     entries: List[Entry] = []
     for source, translation in glossary.items():
+        target: Optional[str]
         if isinstance(translation, str):
             target = translation
         else:
