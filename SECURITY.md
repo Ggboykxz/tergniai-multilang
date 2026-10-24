@@ -70,5 +70,7 @@ Supply-chain hardening:
   (as in `docker-compose.yml`) and use a password or TLS (`rediss://user:pass@host`) in
   `REDIS_URL` when it isn't local. API keys are stored only as hashes in Redis keys and
   conversation owners.
-- Upstream error details are logged, never returned to clients. Conversation history can't
-  inject system prompts.
+- Upstream error details are logged, never returned to clients. Since providers can echo the
+  user's text in error messages, `INFO`/`WARNING` logs carry only the status, the provider's
+  error code and the request ID; the (truncated) body is logged at `DEBUG` only.
+  Conversation history can't inject system prompts.
