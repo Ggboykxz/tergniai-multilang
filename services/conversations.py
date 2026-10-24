@@ -30,6 +30,28 @@ def _owner_hash(owner: str) -> str:
     return hashlib.sha256(owner.encode()).hexdigest()
 
 
+def _limit_history(messages: List[Message]) -> List[Message]:
+    """Keep the newest messages that fit in CONVERSATION_MAX_CHARS characters"""
+    budget = config.CONVERSATION_MAX_CHARS
+    if budget <= 0:
+        return list(messages)
+
+    kept: List[Message] = []
+    total = 0
+    for message in reversed(messages):
+        size = len(message.get("content", ""))
+        if kept and total + size > budget:
+            break
+        kept.append(message)
+        total += size
+    kept.reverse()
+
+    # Do not start with an assistant reply whose question fell outside the budget
+    while len(kept) > 1 and kept[0].get("role") == "assistant":
+        kept.pop(0)
+    return kept
+
+
 def _unavailable(e: Exception) -> HTTPException:
     return HTTPException(status_code=503, detail="Conversation storage is unavailable")
 
@@ -60,7 +82,7 @@ async def get(conversation_id: str, owner: str) -> Optional[List[Message]]:
     entry = await _load(conversation_id)
     if entry is None or entry["owner"] != _owner_hash(owner):
         return None
-    return list(entry["messages"])
+    return _limit_history(list(entry["messages"]))
 
 
 async def append(conversation_id: str, owner: str, *messages: Message) -> None:
@@ -71,9 +93,10 @@ async def append(conversation_id: str, owner: str, *messages: Message) -> None:
         if entry is None or entry.get("owner") != owner_hash:
             return None
         updated = dict(entry)
-        updated["messages"] = (list(entry.get("messages", [])) + list(messages))[
+        combined = (list(entry.get("messages", [])) + list(messages))[
             -config.CONVERSATION_MAX_MESSAGES :
         ]
+        updated["messages"] = _limit_history(combined)
         return updated
 
     try:
