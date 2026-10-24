@@ -5,6 +5,7 @@ Secrets are read from environment variables (or a local `.env` file).
 Never hardcode API keys in this file.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, List, Optional, Tuple
@@ -304,6 +305,40 @@ CACHE_MAX_ITEMS = int(os.getenv("CACHE_MAX_ITEMS", "1000"))
 # Client authentication: comma-separated keys accepted in the X-API-Key header.
 # Leave empty to disable authentication (e.g. for local development).
 API_KEYS = [k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()]
+
+
+def _parse_api_key_quotas(value: str) -> Dict[str, int]:
+    """Parse `API_KEY_QUOTAS` ("key1:1000,key2:5000") into daily request limits"""
+    quotas: Dict[str, int] = {}
+    for item in value.split(","):
+        key, separator, limit = item.rpartition(":")
+        key, limit = key.strip(), limit.strip()
+        if not separator or not key or not limit:
+            if item.strip():
+                logging.getLogger(__name__).warning("Ignoring malformed API_KEY_QUOTAS entry")
+            continue
+        try:
+            daily_limit = int(limit)
+        except ValueError:
+            logging.getLogger(__name__).warning(
+                "Ignoring API_KEY_QUOTAS entry with a non-numeric limit"
+            )
+            continue
+        if daily_limit < 0:
+            logging.getLogger(__name__).warning(
+                "Ignoring API_KEY_QUOTAS entry with a negative limit"
+            )
+            continue
+        quotas[key] = daily_limit
+    return quotas
+
+
+# Optional daily request quotas per API key, counted per UTC day. Keys not listed are
+# unlimited. Quotas only apply when API_KEYS is configured.
+API_KEY_QUOTAS = _parse_api_key_quotas(os.getenv("API_KEY_QUOTAS", ""))
+# How long per-key usage counters are kept (two days covers the current and previous day)
+USAGE_TTL_SECONDS = int(os.getenv("USAGE_TTL_SECONDS", str(2 * 86400)))
+USAGE_MAX_ITEMS = int(os.getenv("USAGE_MAX_ITEMS", "10000"))
 
 # Requests per minute allowed per client (API key or IP). 0 disables rate limiting.
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
