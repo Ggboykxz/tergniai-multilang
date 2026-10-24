@@ -21,13 +21,15 @@ services:
   redis:
     image: redis:8.2-alpine
     # Not published to the host: only the API can reach it.
-    # volatile-lru is a safety net for the local stack: all application keys have a TTL.
+    # No persistence: everything in Redis (conversations, WhatsApp memory, translation
+    # cache) is short-lived by design, and losing it on restart is acceptable. Keeping
+    # snapshots (RDB) would write chat text to disk and in a volume that outlives the
+    # keys' TTL, extending retention beyond what is documented.
     command:
       [
         "redis-server",
         "--save",
-        "60",
-        "1",
+        "",
         "--appendonly",
         "no",
         "--maxmemory",
@@ -35,8 +37,6 @@ services:
         "--maxmemory-policy",
         "volatile-lru",
       ]
-    volumes:
-      - redis-data:/data
     restart: unless-stopped
 
   morena:
@@ -61,4 +61,3 @@ services:
 
 volumes:
   morena-models:
-  redis-data:
