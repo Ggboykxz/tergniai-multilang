@@ -79,7 +79,12 @@ instance.
    ```
 
    `/health` is a liveness probe and always returns quickly. `/health/ready` returns
-   `ready`, `degraded`, or `not_ready` (HTTP 503 when no core provider is configured).
+   `ready`, `degraded`, or `not_ready` (HTTP 503 when no core provider is configured);
+   with `API_KEYS` set, add the key to see the per-service details:
+
+   ```bash
+   curl -H "X-API-Key: <key>" https://YOUR-SERVICE.onrender.com/health/ready
+   ```
 
 7. Open `https://YOUR-SERVICE.onrender.com/chat`. If `API_KEYS` is set, paste the demo
    key into **Settings → API key** in the chat page.
@@ -227,8 +232,11 @@ smallest machine; use a machine with at least 1 GB of RAM or a separate service.
   on its disk. If you point `REDIS_URL` at an external Redis with persistence or
   snapshots enabled, conversation text will be written to that server's disk and survive
   in its backups: you own its encryption at rest and backup retention.
-- `/metrics` and the health probes are public by design. Put `/metrics` behind your
-  proxy or firewall if the deployment is not a throwaway demo.
+- The health probes stay public (load balancers); `/health/ready` shows its per-service
+  details only to callers with a valid `API_KEYS` key. `/metrics` requires an API key when
+  authentication is configured — give your monitoring stack a dedicated `METRICS_TOKEN`
+  instead, and keep both behind your proxy or firewall if the deployment is not a
+  throwaway demo.
 - Review [SECURITY.md](../SECURITY.md) before exposing a production instance, and work
   through the full threat model and operator checklist in
   [THREAT_MODEL.md](THREAT_MODEL.md).
