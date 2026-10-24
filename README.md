@@ -128,6 +128,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `AGENT_MAX_STEPS` | no | `6` | Max model turns per agent request |
 | `CONVERSATION_TTL_SECONDS` | no | `86400` | How long chats are remembered after the last message |
 | `CONVERSATION_MAX_MESSAGES` | no | `40` | Messages kept per conversation |
+| `CONVERSATION_MAX_CHARS` | no | `20000` | Characters of history kept per conversation; the oldest turns are dropped first |
 | `REDIS_URL` | no | *(in-memory)* | Redis for shared cache, rate limits and conversations, e.g. `redis://localhost:6379/0` |
 | `REDIS_PREFIX` | no | `terngi:` | Prefix for every Redis key |
 | `REDIS_TIMEOUT` | no | `2` | Redis connect/read timeout in seconds |
