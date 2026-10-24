@@ -154,6 +154,33 @@ class ConversationHistory(BaseModel):
     messages: List[MemoryMessage]
 
 
+class FeedbackRequest(BaseModel):
+    """A good/bad rating for a translation or chat reply (opt-in only)"""
+
+    source_text: Text
+    translated_text: Text
+    from_language: str
+    to_language: str
+    provider: str = Field(..., min_length=1, max_length=100)
+    rating: Literal["good", "bad"]
+    correction: Optional[StoredText] = Field(
+        None, description="An optional better translation supplied by the user"
+    )
+    consent: bool = Field(
+        False,
+        description=(
+            "Must be true. Confirms that the feedback may be stored and published as part "
+            "of the open evaluation set."
+        ),
+    )
+
+
+class FeedbackResponse(BaseModel):
+    """Confirmation that feedback was appended to storage"""
+
+    status: Literal["stored"] = "stored"
+
+
 class WhatsAppTemplate(BaseModel):
     """An approved WhatsApp template (needed to message someone first, or after 24 hours)"""
 

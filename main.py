@@ -17,7 +17,7 @@ import middleware
 from config import CORS_ORIGINS, MAX_REQUEST_BYTES
 
 # Import routers
-from routes import agent, base, chat, conversation, translation, whatsapp
+from routes import agent, base, chat, conversation, feedback, translation, whatsapp
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -56,6 +56,7 @@ app.include_router(translation.router)
 app.include_router(conversation.router)
 app.include_router(agent.router)
 app.include_router(chat.router)
+app.include_router(feedback.router)
 app.include_router(whatsapp.router)
 
 

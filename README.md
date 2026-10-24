@@ -48,6 +48,7 @@ built in the open so native speakers and developers can improve it together.
 - **Converse** in any supported language; the reply comes back in the target language,
   with optional multi-turn memory (`memory_context`)
 - **Translation cache** (in-memory TTL/LRU) to save quota on repeated phrases
+- **Opt-in feedback** for building an open translation evaluation set
 - **API-key authentication** (`X-API-Key`) and **per-client rate limiting**
 - **Request IDs** (`X-Request-ID`) and timing headers for tracing
 - Input validation, upstream timeouts and consistent JSON error responses
@@ -209,6 +210,7 @@ only through the proxy.
 | `POST` | `/v1/translate` | Translate text |
 | `POST` | `/v1/translate/batch` | Translate up to 25 texts in one request |
 | `POST` | `/v1/detect` | Detect the language of a text |
+| `POST` | `/v1/feedback` | Rate a translation or chat reply (opt-in) |
 | `POST` | `/v1/converse` | Translate and get an LLM reply |
 | `POST` | `/v1/agent` | The assistant without server memory (send `history` yourself) |
 | `POST` | `/v1/chat` | **Chat** with memory: send `message` and `conversation_id` |

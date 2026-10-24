@@ -301,6 +301,10 @@ MAX_BATCH_CHARACTERS = int(os.getenv("MAX_BATCH_CHARACTERS", "50000"))
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "3600"))
 CACHE_MAX_ITEMS = int(os.getenv("CACHE_MAX_ITEMS", "1000"))
 
+# Opt-in translation feedback. With REDIS_URL set, records are appended to a Redis list;
+# otherwise they are appended to this JSONL file. Keep the file out of version control.
+FEEDBACK_FILE = os.getenv("FEEDBACK_FILE", "feedback.jsonl")
+
 # Client authentication: comma-separated keys accepted in the X-API-Key header.
 # Leave empty to disable authentication (e.g. for local development).
 API_KEYS = [k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()]
