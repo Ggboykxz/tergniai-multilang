@@ -94,6 +94,11 @@ docker compose up
 Starts the API with Redis, so the cache, rate limits and chat conversations are shared and
 survive restarts.
 
+### Deploy a public demo
+
+See [docs/DEPLOY.md](docs/DEPLOY.md) for current free/cheap hosting options (Render,
+Hugging Face Spaces, Fly.io), secret/rate-limit settings, and free-tier caveats.
+
 ### Run with MORENA (free, no API keys needed)
 
 ```bash
