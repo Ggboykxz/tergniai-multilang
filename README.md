@@ -128,6 +128,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `DETECTION_PROVIDERS` | no | `azure` + LLM providers except MORENA | Providers used for language detection |
 | `AGENT_PROVIDERS` | no | OpenAI-compatible chat providers | Providers that run the agent (must support tool calling) |
 | `AGENT_MAX_STEPS` | no | `6` | Max model turns per agent request |
+| `AGENT_MAX_TOKENS` | no | `1500` | Max tokens per agent model call (bounds the cost of a multi-step request) |
 | `CONVERSATION_TTL_SECONDS` | no | `86400` | How long chats are remembered after the last message |
 | `CONVERSATION_MAX_ITEMS` | no | `10000` | Maximum conversations kept; the least recently written are evicted first |
 | `CONVERSATION_MAX_MESSAGES` | no | `40` | Messages kept per conversation |
