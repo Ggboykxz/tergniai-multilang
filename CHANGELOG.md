@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   GHSA-9vhv-jxww-xfm5, GHSA-crv4-6mhj-j5jh, GHSA-jqc4-5cvw-7w85, GHSA-v4x8-3wr5-3wq8).
 
 ### Added
+- **Release images** (#16): pushing a `v*` tag builds `linux/amd64` and `linux/arm64`
+  images on GHCR (`ghcr.io/terngi-ai/tergniai-multilang`) and creates a GitHub Release
+  with notes from `CHANGELOG.md`.
 - **WhatsApp bot** (`/v1/whatsapp/webhook`): people message your WhatsApp number in any
   supported language and get answers in that language from the agent, with memory (in
   memory or Redis). Commands: `LANGUAGE`, `RESET`, `HELP`. Webhooks are verified by Meta's
