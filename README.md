@@ -143,6 +143,8 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `REQUEST_TIMEOUT` | no | `30` | Upstream timeout in seconds |
 | `REQUEST_DEADLINE_SECONDS` | no | `55` | Whole-request wall-clock budget for JSON responses; retries, fallbacks and agent steps share it (`0` disables) |
 | `STREAM_DEADLINE_SECONDS` | no | `120` | Whole-request budget for streaming responses (`0` disables) |
+| `STREAM_HEARTBEAT_SECONDS` | no | `15` | `/v1/chat/stream` sends an SSE keep-alive comment at most this often, so idle proxies don't cut long streams (`0` disables) |
+| `STREAM_QUEUE_MAXSIZE` | no | `256` | Pending events per stream; a client that reads slowly pauses generation (backpressure) instead of growing memory (`0` removes the bound) |
 | `REQUEST_MAX_UPSTREAM_ATTEMPTS` | no | `20` | Maximum upstream requests per API request, retries and fallbacks included (`0` disables) |
 | `UPSTREAM_MAX_RETRIES` | no | `2` | Retries for upstream `5xx`/connection errors (all providers) and Azure `429`s; `0` disables. LLM `429`s rotate to the next key or model instead |
 | `UPSTREAM_RETRY_BASE_DELAY` | no | `0.5` | First backoff step in seconds; doubles each retry, with full jitter |
