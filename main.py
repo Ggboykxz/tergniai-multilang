@@ -33,8 +33,9 @@ app = FastAPI(
 )
 
 # Middleware runs in reverse order of registration:
-# body size limit -> security headers -> request context -> auth -> rate limit
+# body size limit -> security headers -> request context -> auth -> usage limits -> rate limit
 app.middleware("http")(middleware.rate_limit)
+app.middleware("http")(middleware.usage_limits)
 app.middleware("http")(middleware.authenticate)
 app.middleware("http")(middleware.request_context)
 app.middleware("http")(middleware.security_headers)
