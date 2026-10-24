@@ -92,7 +92,8 @@ docker compose up
 ```
 
 Starts the API with Redis, so the cache, rate limits and chat conversations are shared and
-survive restarts.
+survive restarts. The Redis service also has a 512 MB `volatile-lru` limit as a safety net;
+conversation storage independently enforces `CONVERSATION_MAX_ITEMS`.
 
 ### Deploy a public demo
 
@@ -127,6 +128,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `AGENT_PROVIDERS` | no | OpenAI-compatible chat providers | Providers that run the agent (must support tool calling) |
 | `AGENT_MAX_STEPS` | no | `6` | Max model turns per agent request |
 | `CONVERSATION_TTL_SECONDS` | no | `86400` | How long chats are remembered after the last message |
+| `CONVERSATION_MAX_ITEMS` | no | `10000` | Maximum conversations kept; the least recently written are evicted first |
 | `CONVERSATION_MAX_MESSAGES` | no | `40` | Messages kept per conversation |
 | `CONVERSATION_MAX_CHARS` | no | `20000` | Characters of history kept per conversation; the oldest turns are dropped first |
 | `REDIS_URL` | no | *(in-memory)* | Redis for shared cache, rate limits and conversations, e.g. `redis://localhost:6379/0` |
