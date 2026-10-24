@@ -14,12 +14,13 @@ from collections import defaultdict, deque
 from typing import Any, Awaitable, Callable, Deque, Dict, Optional
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import config
 import metrics
 from services import deadline as request_deadline
 from services import translator
+from services import usage
 from services.store import RedisRateLimiter, using_redis
 
 logger = logging.getLogger(__name__)
@@ -210,6 +211,20 @@ def _valid_api_key(candidate: Optional[str]) -> bool:
     return any(hmac.compare_digest(candidate_bytes, key.encode("utf-8")) for key in config.API_KEYS)
 
 
+def authenticated_key(request: Request) -> Optional[str]:
+    """The raw API key when API_KEYS is configured and the header is valid, else None"""
+    api_key = request.headers.get("x-api-key")
+    if config.API_KEYS and _valid_api_key(api_key):
+        return api_key
+    return None
+
+
+def usage_label(request: Request) -> Optional[str]:
+    """Hashed API-key label for usage tracking, or None without a valid key"""
+    api_key = authenticated_key(request)
+    return usage.key_label(api_key) if api_key else None
+
+
 def _record_request(request: Request, status: int, elapsed: float) -> None:
     method, route = metrics.method_label(request), metrics.route_label(request)
     metrics.REQUESTS.labels(method, route, str(status)).inc()
@@ -296,6 +311,53 @@ async def authenticate(request: Request, call_next: CallNext) -> Response:
             metrics.AUTH_FAILURES.labels("invalid").inc()
             return error_response(401, "Missing or invalid API key")
     return await call_next(request)
+
+
+async def usage_limits(request: Request, call_next: CallNext) -> Response:
+    """
+    Count every request per API key and enforce optional daily quotas
+
+    Runs after authentication so only valid keys are counted. A key over its daily quota
+    is answered with 429 before any work happens, with `Retry-After` set to the next UTC
+    midnight. Storage failures fail open: the request is still served.
+    """
+    api_key = authenticated_key(request)
+    label = usage_label(request)
+
+    if label is None:
+        usage.begin(None)
+        return await call_next(request)
+
+    quota = usage.quota_for(api_key)
+    allowed, _ = await usage.hit(label, quota)
+    metrics.API_KEY_REQUESTS.labels(label).inc()
+
+    if not allowed:
+        metrics.API_QUOTA_EXCEEDED.labels(label).inc()
+        return error_response(
+            429,
+            "Daily request quota exceeded for this API key",
+            {"Retry-After": str(usage.seconds_until_tomorrow())},
+        )
+
+    usage.begin(label)
+    response = await call_next(request)
+
+    if isinstance(response, StreamingResponse):
+        # Streams run after call_next returns; clear the label when the last chunk is sent
+        original = response.body_iterator
+
+        async def reset_after_stream():
+            try:
+                async for chunk in original:
+                    yield chunk
+            finally:
+                usage.begin(None)
+
+        response.body_iterator = reset_after_stream()
+    else:
+        usage.begin(None)
+    return response
 
 
 async def rate_limit(request: Request, call_next: CallNext) -> Response:
