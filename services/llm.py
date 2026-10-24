@@ -17,7 +17,7 @@ from fastapi import HTTPException
 import config
 import metrics
 from config import LLMProvider
-from services import deadline
+from services import deadline, usage
 from services.keypool import key_pool, mask, retry_after_seconds
 from services.retry import RETRY_STATUS_CODES, retry_delay
 
@@ -163,6 +163,7 @@ async def _stream_chat(
     """
     content: List[str] = []
     tool_calls: Dict[int, Dict[str, Any]] = {}
+    stream_usage: Dict[str, int] = {}
     deadline.consume_attempt()
     try:
         async with httpx.AsyncClient(timeout=config.REQUEST_TIMEOUT) as client:
@@ -184,7 +185,11 @@ async def _stream_chat(
                     if data == "[DONE]":
                         break
                     try:
-                        delta = json.loads(data)["choices"][0].get("delta") or {}
+                        chunk = json.loads(data)
+                        usage_chunk = chunk.get("usage")
+                        if isinstance(usage_chunk, dict):
+                            stream_usage = usage_chunk
+                        delta = chunk["choices"][0].get("delta") or {}
                     except (ValueError, LookupError, TypeError):
                         continue  # keep-alives and provider-specific extras
                     text = delta.get("content")
@@ -207,6 +212,10 @@ async def _stream_chat(
     except httpx.HTTPError as e:
         raise _ModelFailed(f"connection error: {type(e).__name__}", unreachable=True) from e
 
+    await usage.record_upstream(
+        prompt_tokens=stream_usage.get("prompt_tokens", 0),
+        completion_tokens=stream_usage.get("completion_tokens", 0),
+    )
     message: Message = {"role": "assistant", "content": "".join(content)}
     if tool_calls:
         message["tool_calls"] = [tool_calls[index] for index in sorted(tool_calls)]
@@ -238,9 +247,15 @@ async def _call(
         response = await _post(f"{provider.base_url}/completion", headers, body)
         _check_status(response, provider.name, key)
         try:
-            return {"role": "assistant", "content": str(response.json()["content"]).strip()}
+            data = response.json()
+            message = {"role": "assistant", "content": str(data["content"]).strip()}
         except (ValueError, LookupError, TypeError) as e:
             raise _ModelFailed("malformed response") from e
+        await usage.record_upstream(
+            prompt_tokens=data.get("tokens_evaluated", 0),
+            completion_tokens=data.get("tokens_predicted", 0),
+        )
+        return message
 
     body = {"model": model, "messages": messages, "temperature": temperature}
     if max_tokens:
@@ -258,11 +273,17 @@ async def _call(
     response = await _post(f"{provider.base_url}/chat/completions", headers, body)
     _check_status(response, provider.name, key)
     try:
-        message = response.json()["choices"][0]["message"]
+        data = response.json()
+        message = data["choices"][0]["message"]
+        usage_data = data.get("usage") or {}
     except (ValueError, LookupError, TypeError) as e:
         raise _ModelFailed("malformed response") from e
     if not isinstance(message, dict):
         raise _ModelFailed("malformed response")
+    await usage.record_upstream(
+        prompt_tokens=usage_data.get("prompt_tokens", 0),
+        completion_tokens=usage_data.get("completion_tokens", 0),
+    )
     return message
 
 

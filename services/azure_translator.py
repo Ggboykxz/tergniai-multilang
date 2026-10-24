@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 import config
 import metrics
-from services import deadline
+from services import deadline, usage
 from services.keypool import key_pool, mask
 from services.retry import RETRY_STATUS_CODES
 from services.retry import parse_retry_after as _parse_retry_after
@@ -128,6 +128,7 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
             logger.error("Azure Translator returned %s: %s", response.status_code, response.text)
         raise HTTPException(status_code=502, detail="Translation service error")
 
+    await usage.record_upstream()  # Azure does not report token usage
     try:
         return response.json()
     except ValueError as e:
