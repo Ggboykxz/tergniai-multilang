@@ -200,6 +200,14 @@ def _valid_api_key(candidate: Optional[str]) -> bool:
     return any(hmac.compare_digest(candidate, key) for key in config.API_KEYS)
 
 
+def authenticated_key(request: Request) -> Optional[str]:
+    """The raw API key when API_KEYS is configured and the header is valid, else None"""
+    api_key = request.headers.get("x-api-key")
+    if config.API_KEYS and _valid_api_key(api_key):
+        return api_key
+    return None
+
+
 def _record_request(request: Request, status: int, elapsed: float) -> None:
     method, route = metrics.method_label(request), metrics.route_label(request)
     metrics.REQUESTS.labels(method, route, str(status)).inc()

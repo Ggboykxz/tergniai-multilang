@@ -154,6 +154,20 @@ class ConversationHistory(BaseModel):
     messages: List[MemoryMessage]
 
 
+class ConversationExport(BaseModel):
+    """A conversation downloaded for a data-access request"""
+
+    conversation_id: str
+    exported_at: str
+    messages: List[MemoryMessage]
+
+
+class ConversationDeleteResponse(BaseModel):
+    """How many of the caller's conversations were deleted"""
+
+    deleted: int
+
+
 class WhatsAppTemplate(BaseModel):
     """An approved WhatsApp template (needed to message someone first, or after 24 hours)"""
 
