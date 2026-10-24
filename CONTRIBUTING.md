@@ -114,7 +114,28 @@ This project doesn't use Dependabot, so dependencies are updated by hand:
 - **GitHub Actions:** actions are pinned to a full commit SHA with the version in a comment, e.g.
   `actions/checkout@<sha> # v4.4.0`. To update one, look up the new release's commit
   (`gh api repos/actions/checkout/commits/v4.5.0 --jq .sha`) and replace both the SHA and the comment.
-- **Scanner versions** are set at the top of `security.yml`.
+- **Container images:** every image is pinned by tag **and** digest, so a moved or
+  compromised tag can't silently change what we build or run:
+  - `Dockerfile` — the `python:3.12-slim` base image;
+  - `docker-compose.yml` — `redis:8.2-alpine`, and the MORENA server, pinned to a
+    **versioned** build tag (`ghcr.io/ggml-org/llama.cpp:server-b<build>`) because the plain
+    `server` tag moves on every upstream build;
+  - `.github/workflows/security.yml` — the scanner images (OSV-Scanner, Trivy, ZAP, ClamAV;
+    ClamAV is pinned to the version its moving `stable` tag points to, since each release
+    ships fresh virus signatures), and `.github/workflows/ci.yml` — gitleaks.
+
+  Bump them about once a month, or sooner after a security advisory, in one commit that
+  changes the tag **and** the digest together. Look up a tag's digest with:
+
+  ```bash
+  docker buildx imagetools inspect python:3.12-slim
+  # prints "Name:  docker.io/library/python:3.12-slim" and "Digest: sha256:..."
+  ```
+
+  (or `curl -sI` the registry's manifest endpoint). For a new llama.cpp build, list the
+  `server-b<build>` tags in the
+  [package's versions](https://github.com/ggml-org/llama.cpp/pkgs/container/llama.cpp/versions)
+  and pin the newest one you want; Trivy already scans the image in CI.
 
 ## Adding a language
 
