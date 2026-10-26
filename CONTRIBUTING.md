@@ -125,6 +125,14 @@ This project doesn't use Dependabot, so dependencies are updated by hand:
 2. Add its code to `SUPPORTED_LANGUAGES` in `config.py`.
 3. Update the tests and the README.
 
+## Data and published content
+
+- Never commit raw user data (conversations, feedback, WhatsApp transcripts).
+- Every dataset under `data/` needs a dataset card (template: `docs/DATASET.md`) with
+  sources, licences, consent and known biases.
+- Anything published from user-generated content goes through `scripts/redact_pii.py`
+  first, and a maintainer reviews the card before merge. See `data/README.md`.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
