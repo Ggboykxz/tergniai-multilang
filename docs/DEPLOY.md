@@ -161,8 +161,10 @@ have access, this is the best free-hardware option for running MORENA next to th
 MORENA is a 1.5B model (about 0.9 GB in 4-bit). It does not fit in Render's 512 MB free
 instance, but it fits comfortably on Hugging Face CPU Basic.
 
-1. Create a second Docker Space from the `ghcr.io/ggml-org/llama.cpp:server` image with
-   the command used in `docker-compose.yml` (or run MORENA on your own machine).
+1. Create a second Docker Space from the `ghcr.io/ggml-org/llama.cpp:server-b11854` image
+   (the same versioned, digest-pinned build used in `docker-compose.yml`; see
+   [CONTRIBUTING.md](../CONTRIBUTING.md) for how to pick a newer build) with the command
+   used in `docker-compose.yml` (or run MORENA on your own machine).
 2. Note the Space URL, for example `https://YOUR_USER-morena.hf.space`.
 3. On the API Space, add:
 
