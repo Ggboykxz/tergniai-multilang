@@ -248,6 +248,9 @@ AGENT_PROVIDERS = _env_list("AGENT_PROVIDERS") or [
 ]
 # Maximum reasoning/tool steps per agent request
 AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "6"))
+# Max tokens generated per agent model call. Since a request can run up to
+# AGENT_MAX_STEPS calls, this bounds the cost and duration of a single agent request.
+AGENT_MAX_TOKENS = int(os.getenv("AGENT_MAX_TOKENS", "1500"))
 
 # Shared storage. With REDIS_URL set (e.g. redis://localhost:6379/0), the translation cache,
 # rate limits and chat conversations are shared by every replica and survive restarts.
