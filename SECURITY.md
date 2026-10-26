@@ -77,3 +77,9 @@ Supply-chain hardening:
 - User text is sent to third-party AI providers that act as data processors. What each
   provider receives and its retention and training terms are documented in
   [docs/DATA.md](docs/DATA.md), which must be reviewed whenever a provider is added.
+
+## For operators
+
+Before exposing the API to the internet, work through the threat model and the operator
+checklist in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): assets, threats and
+mitigations, and the settings to check before first startup and on a regular basis.

@@ -229,7 +229,9 @@ smallest machine; use a machine with at least 1 GB of RAM or a separate service.
   in its backups: you own its encryption at rest and backup retention.
 - `/metrics` and the health probes are public by design. Put `/metrics` behind your
   proxy or firewall if the deployment is not a throwaway demo.
-- Review [SECURITY.md](../SECURITY.md) before exposing a production instance.
+- Review [SECURITY.md](../SECURITY.md) before exposing a production instance, and work
+  through the full threat model and operator checklist in
+  [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Troubleshooting
 
