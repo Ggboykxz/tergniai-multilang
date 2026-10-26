@@ -160,6 +160,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `API_KEYS` | no | *(auth disabled)* | Comma-separated client keys accepted in `X-API-Key` |
 | `WHATSAPP_*` | no | *(off)* | WhatsApp bot settings, see [docs/WHATSAPP.md](docs/WHATSAPP.md) |
 | `RATE_LIMIT_PER_MINUTE` | no | `60` | Requests per minute per client; `0` disables |
+| `AUTH_FAILURES_PER_MINUTE` | no | `10` | Failed API-key attempts allowed per IP per minute; `0` disables |
 | `CACHE_TTL_SECONDS` | no | `3600` | Translation cache lifetime; `0` disables |
 | `CACHE_MAX_ITEMS` | no | `1000` | Max cached translations |
 | `MAX_BATCH_SIZE` | no | `25` | Max texts per batch request |
@@ -256,6 +257,7 @@ your internal network or block it at the reverse proxy).
 | `terngi_upstream_request_duration_seconds` | `service` | Upstream latency histogram |
 | `terngi_translation_cache_lookups_total` | `result` (`hit`/`miss`) | Translation cache lookups, one per text |
 | `terngi_rate_limited_requests_total` | — | Requests rejected by the rate limiter |
+| `terngi_auth_failures_total` | `outcome` (`invalid`/`throttled`) | Invalid API keys, and failed attempts throttled by the per-IP limiter |
 
 `route` is the route template (e.g. `/v1/translate`), or `unmatched` for unknown paths,
 so label values stay bounded. Metrics are per process, like the cache and rate limiter.

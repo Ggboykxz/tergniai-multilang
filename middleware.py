@@ -160,6 +160,13 @@ rate_limiter: Any = (
     else RateLimiter(limit=config.RATE_LIMIT_PER_MINUTE)
 )
 
+# Separate limiter for failed authentications, keyed by IP (see #82)
+auth_failure_limiter: Any = (
+    RedisRateLimiter(limit=config.AUTH_FAILURES_PER_MINUTE)
+    if using_redis()
+    else RateLimiter(limit=config.AUTH_FAILURES_PER_MINUTE)
+)
+
 
 def _fingerprint(api_key: str) -> str:
     """Hash keys so raw API keys are never used as dictionary keys or stored in memory"""
@@ -255,6 +262,16 @@ async def authenticate(request: Request, call_next: CallNext) -> Response:
     """Require a valid X-API-Key header when API_KEYS is configured"""
     if config.API_KEYS and request.url.path not in PUBLIC_PATHS and request.method != "OPTIONS":
         if not _valid_api_key(request.headers.get("x-api-key")):
+            # Failed authentications are rate-limited per IP (issue #82), so guessing
+            # keys or flooding the logs is not free. This runs before the normal rate
+            # limiter, which only counts authenticated clients.
+            if auth_failure_limiter.limit > 0:
+                allowed, _, retry_after = await auth_failure_limiter.hit(_ip(request))
+                if not allowed:
+                    headers = {"Retry-After": str(max(1, int(retry_after + 0.999)))}
+                    metrics.AUTH_FAILURES.labels("throttled").inc()
+                    return error_response(429, "Too many failed authentication attempts", headers)
+            metrics.AUTH_FAILURES.labels("invalid").inc()
             return error_response(401, "Missing or invalid API key")
     return await call_next(request)
 

@@ -326,6 +326,10 @@ API_KEYS = [k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()
 # Requests per minute allowed per client (API key or IP). 0 disables rate limiting.
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 
+# Failed API-key attempts allowed per IP per minute (0 disables). Wrong or missing keys
+# are rate-limited by IP so guessing and log flooding are not free.
+AUTH_FAILURES_PER_MINUTE = int(os.getenv("AUTH_FAILURES_PER_MINUTE", "10"))
+
 # Comma-separated list of allowed CORS origins (empty disables CORS)
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
