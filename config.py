@@ -280,6 +280,14 @@ REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "30"))
 # 0 disables the deadline (and the upstream attempt cap).
 REQUEST_DEADLINE_SECONDS = float(os.getenv("REQUEST_DEADLINE_SECONDS", "55"))
 STREAM_DEADLINE_SECONDS = float(os.getenv("STREAM_DEADLINE_SECONDS", "120"))
+# /v1/chat/stream: at most one SSE keep-alive comment per STREAM_HEARTBEAT_SECONDS, so
+# idle proxies (Nginx, ALB, Cloudflare) don't cut a stream while a slow tool call runs.
+# 0 disables the comments.
+STREAM_HEARTBEAT_SECONDS = float(os.getenv("STREAM_HEARTBEAT_SECONDS", "15"))
+# Pending events a stream may hold while the client reads slowly. When the queue is
+# full, generation is blocked (backpressure) instead of growing memory without limit.
+# 0 removes the bound.
+STREAM_QUEUE_MAXSIZE = int(os.getenv("STREAM_QUEUE_MAXSIZE", "256"))
 # Maximum upstream requests (retries and fallbacks included) per HTTP request.
 REQUEST_MAX_UPSTREAM_ATTEMPTS = int(os.getenv("REQUEST_MAX_UPSTREAM_ATTEMPTS", "20"))
 
