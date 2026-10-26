@@ -79,6 +79,9 @@ maintainer must approve.
 - CI is green (lint, types, tests on Python 3.11–3.13, Docker build, security scans).
 - Coverage stays at or above 85%.
 - New behaviour is documented in `README.md`.
+- If the change adds or removes an AI provider in `config.py`,
+  [docs/DATA.md](docs/DATA.md) is updated (what that provider receives and its retention
+  and training terms).
 - No secrets, `.env` files or large binaries are committed.
 - The Security workflow passes (malware, code, dependency, container and attack scans).
 
@@ -121,6 +124,14 @@ This project doesn't use Dependabot, so dependencies are updated by hand:
 1. Check the language is supported by [Azure Translator](https://learn.microsoft.com/azure/ai-services/translator/language-support).
 2. Add its code to `SUPPORTED_LANGUAGES` in `config.py`.
 3. Update the tests and the README.
+
+## Data and published content
+
+- Never commit raw user data (conversations, feedback, WhatsApp transcripts).
+- Every dataset under `data/` needs a dataset card (template: `docs/DATASET.md`) with
+  sources, licences, consent and known biases.
+- Anything published from user-generated content goes through `scripts/redact_pii.py`
+  first, and a maintainer reviews the card before merge. See `data/README.md`.
 
 ## License
 
