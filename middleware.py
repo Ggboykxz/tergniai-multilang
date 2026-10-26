@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import time
 import uuid
 from collections import defaultdict, deque
@@ -207,9 +208,21 @@ def _record_request(request: Request, status: int, elapsed: float) -> None:
     metrics.REQUEST_LATENCY.labels(method, route).observe(elapsed)
 
 
+# Client-supplied request IDs are only accepted when they are short and boring, so they
+# cannot bloat or inject into log lines. Anything else is replaced by a generated UUID.
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+def _request_id(request: Request) -> str:
+    supplied = request.headers.get("x-request-id", "")
+    if REQUEST_ID_RE.match(supplied):
+        return supplied
+    return uuid.uuid4().hex
+
+
 async def request_context(request: Request, call_next: CallNext) -> Response:
     """Attach a request ID and timing header to every response"""
-    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    request_id = _request_id(request)
     request.state.request_id = request_id
     start = time.perf_counter()
 
@@ -225,10 +238,12 @@ async def request_context(request: Request, call_next: CallNext) -> Response:
     _record_request(request, response.status_code, elapsed)
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
+    # Log the route template, not the raw path: raw paths would write conversation
+    # IDs (which grant access to the conversation) into the logs
     logger.info(
         "%s %s -> %s (%.1f ms) [%s]",
         request.method,
-        request.url.path,
+        metrics.route_label(request),
         response.status_code,
         elapsed_ms,
         request_id,
