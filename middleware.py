@@ -195,10 +195,11 @@ def rate_limit_id(request: Request) -> str:
 
 
 def _valid_api_key(candidate: Optional[str]) -> bool:
-    """Compare against configured keys in constant time"""
+    """Compare against configured keys in constant time (bytes, so non-ASCII cannot crash)"""
     if not candidate:
         return False
-    return any(hmac.compare_digest(candidate, key) for key in config.API_KEYS)
+    candidate_bytes = candidate.encode("utf-8")
+    return any(hmac.compare_digest(candidate_bytes, key.encode("utf-8")) for key in config.API_KEYS)
 
 
 def _record_request(request: Request, status: int, elapsed: float) -> None:

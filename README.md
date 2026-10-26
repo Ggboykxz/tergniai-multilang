@@ -38,7 +38,8 @@ built in the open so native speakers and developers can improve it together.
   the scenes, see [docs/AGENT.md](docs/AGENT.md)
 - **Multiple providers, models and keys** — Azure, Groq, OpenRouter, Together, Cerebras,
   Hugging Face, Ollama or MORENA, tried in order; keys rotate and failing keys, models or
-  providers are skipped automatically
+  providers are skipped automatically. Which user data each provider receives, and its
+  retention and training terms: [docs/DATA.md](docs/DATA.md)
 - **WhatsApp bot**: people message your WhatsApp number in any supported language and get
   answers in that language, with memory; plus an endpoint to send messages. See
   [docs/WHATSAPP.md](docs/WHATSAPP.md)
@@ -93,8 +94,12 @@ docker compose up
 ```
 
 Starts the API with Redis, so the cache, rate limits and chat conversations are shared and
-survive restarts. The Redis service also has a 512 MB `volatile-lru` limit as a safety net;
-conversation storage independently enforces `CONVERSATION_MAX_ITEMS`.
+survive API container restarts. The Redis service runs **without persistence** (no RDB
+snapshots, no AOF, no volume): everything it holds is short-lived by design, and we do not
+want chat text written to disk where it would outlive the keys' TTL. For longer-lived
+shared storage, point `REDIS_URL` at an external Redis you manage. The Redis service also
+has a 512 MB `volatile-lru` limit as a safety net; conversation storage independently
+enforces `CONVERSATION_MAX_ITEMS`.
 
 ### Deploy a public demo
 
@@ -128,6 +133,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `DETECTION_PROVIDERS` | no | `azure` + LLM providers except MORENA | Providers used for language detection |
 | `AGENT_PROVIDERS` | no | OpenAI-compatible chat providers | Providers that run the agent (must support tool calling) |
 | `AGENT_MAX_STEPS` | no | `6` | Max model turns per agent request |
+| `AGENT_MAX_TOKENS` | no | `1500` | Max tokens per agent model call (bounds the cost of a multi-step request) |
 | `CONVERSATION_TTL_SECONDS` | no | `86400` | How long chats are remembered after the last message |
 | `CONVERSATION_MAX_ITEMS` | no | `10000` | Maximum conversations kept; the least recently written are evicted first |
 | `CONVERSATION_MAX_MESSAGES` | no | `40` | Messages kept per conversation |
@@ -228,8 +234,11 @@ When `API_KEYS` is set, every `/v1/*` endpoint except `/v1/languages` requires a
 `X-RateLimit-Remaining`; when exceeded you get `429` with a `Retry-After` header.
 
 > By default the cache, rate limiter and chat conversations live in each server process's
-> memory. Set `REDIS_URL` to share them between replicas and keep conversations across restarts
-> (`docker compose up` does this for you).
+> memory. Set `REDIS_URL` to share them between replicas (`docker compose up` does this
+> for you; the compose Redis runs without persistence, so nothing is written to disk).
+> If you point it at an external Redis with persistence enabled, conversation text will
+> be written to that server's disk and backups: you then own its encryption at rest and
+> backup retention.
 
 ### Metrics
 
