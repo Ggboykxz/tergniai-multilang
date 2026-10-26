@@ -337,8 +337,10 @@ def test_access_log_uses_route_template_not_raw_path(client, caplog):
     assert "/v1/chat/{conversation_id}" in logged
 
 
-def test_ready_when_configured(client):
-    response = client.get("/health/ready")
+def test_ready_when_configured(client, monkeypatch):
+    monkeypatch.setattr(config, "API_KEYS", ["secret"])
+
+    response = client.get("/health/ready", headers={"X-API-Key": "secret"})
 
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
@@ -350,10 +352,21 @@ def test_ready_when_configured(client):
     }
 
 
-def test_ready_is_degraded_when_agent_is_not_configured(client, monkeypatch):
-    monkeypatch.setattr(config, "AGENT_PROVIDERS", [])
+def test_ready_hides_service_details_from_strangers(client, monkeypatch):
+    monkeypatch.setattr(config, "API_KEYS", ["secret"])
 
     response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+    assert "services" not in response.json()
+
+
+def test_ready_is_degraded_when_agent_is_not_configured(client, monkeypatch):
+    monkeypatch.setattr(config, "AGENT_PROVIDERS", [])
+    monkeypatch.setattr(config, "API_KEYS", ["secret"])
+
+    response = client.get("/health/ready", headers={"X-API-Key": "secret"})
 
     assert response.status_code == 200
     assert response.json()["status"] == "degraded"
@@ -365,8 +378,9 @@ def test_not_ready_without_keys(client, monkeypatch):
     monkeypatch.setattr(config, "CHAT_PROVIDERS", [])
     monkeypatch.setattr(config, "AGENT_PROVIDERS", [])
     monkeypatch.setattr(config, "AZURE_TRANSLATOR_KEYS", [])
+    monkeypatch.setattr(config, "API_KEYS", ["secret"])
 
-    response = client.get("/health/ready")
+    response = client.get("/health/ready", headers={"X-API-Key": "secret"})
 
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
