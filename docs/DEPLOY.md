@@ -161,8 +161,10 @@ have access, this is the best free-hardware option for running MORENA next to th
 MORENA is a 1.5B model (about 0.9 GB in 4-bit). It does not fit in Render's 512 MB free
 instance, but it fits comfortably on Hugging Face CPU Basic.
 
-1. Create a second Docker Space from the `ghcr.io/ggml-org/llama.cpp:server` image with
-   the command used in `docker-compose.yml` (or run MORENA on your own machine).
+1. Create a second Docker Space from the `ghcr.io/ggml-org/llama.cpp:server-b11854` image
+   (the same versioned, digest-pinned build used in `docker-compose.yml`; see
+   [CONTRIBUTING.md](../CONTRIBUTING.md) for how to pick a newer build) with the command
+   used in `docker-compose.yml` (or run MORENA on your own machine).
 2. Note the Space URL, for example `https://YOUR_USER-morena.hf.space`.
 3. On the API Space, add:
 
@@ -221,6 +223,10 @@ smallest machine; use a machine with at least 1 GB of RAM or a separate service.
 - Set `RATE_LIMIT_PER_MINUTE` low and `RATE_LIMIT_MAX_WAIT_SECONDS=0`.
 - Set `CORS_ORIGINS` only if a browser app on another origin calls the API. The built-in
   `/chat` page is same-origin and does not need it.
+- The bundled `docker compose` Redis runs without persistence, so chat text never lands
+  on its disk. If you point `REDIS_URL` at an external Redis with persistence or
+  snapshots enabled, conversation text will be written to that server's disk and survive
+  in its backups: you own its encryption at rest and backup retention.
 - `/metrics` and the health probes are public by design. Put `/metrics` behind your
   proxy or firewall if the deployment is not a throwaway demo.
 - Review [SECURITY.md](../SECURITY.md) before exposing a production instance.

@@ -74,3 +74,6 @@ Supply-chain hardening:
   user's text in error messages, `INFO`/`WARNING` logs carry only the status, the provider's
   error code and the request ID; the (truncated) body is logged at `DEBUG` only.
   Conversation history can't inject system prompts.
+- User text is sent to third-party AI providers that act as data processors. What each
+  provider receives and its retention and training terms are documented in
+  [docs/DATA.md](docs/DATA.md), which must be reviewed whenever a provider is added.
