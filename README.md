@@ -265,6 +265,31 @@ curl -X POST http://localhost:8000/v1/translate/batch \
   -d '{"texts": ["Good morning", "Thank you"], "from_language": "en", "to_language": "ig"}'
 ```
 
+### Glossary
+
+Both translation endpoints accept an optional `glossary`: a map of source terms to a
+translation for every target language (`"Terngi": "Terngi"`) or to per-language translations
+(`"mobile money": {"ha": "kudin waya", "yo": "owo alagbeka"}`). A term mapped to itself is
+protected from translation; entries for other target languages are ignored.
+
+```bash
+curl -X POST http://localhost:8000/v1/translate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "content": "Welcome to Terngi, where you can pay with mobile money",
+    "from_language": "en",
+    "to_language": "ha",
+    "glossary": {
+      "Terngi": "Terngi",
+      "mobile money": {"ha": "kudin waya"}
+    }
+  }'
+```
+
+Azure Translator receives the terms as dynamic-dictionary markup, language models get them in
+the prompt and MORENA uses placeholders around protected terms. The glossary is part of the
+cache key, so the same text with different glossaries is translated and cached separately.
+
 ### Detect language
 
 ```bash

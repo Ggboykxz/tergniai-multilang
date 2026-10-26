@@ -12,6 +12,8 @@ from fastapi import HTTPException
 import config
 import metrics
 from services import deadline
+from services import glossary as glossary_service
+from services.glossary import Glossary
 from services.keypool import key_pool, mask
 from services.retry import RETRY_STATUS_CODES
 from services.retry import parse_retry_after as _parse_retry_after
@@ -142,7 +144,12 @@ def _cooldown(response: httpx.Response) -> float:
     return config.KEY_COOLDOWN_SECONDS if retry_after is None else retry_after
 
 
-async def translate_batch(texts: List[str], from_language: str, to_language: str) -> List[str]:
+async def translate_batch(
+    texts: List[str],
+    from_language: str,
+    to_language: str,
+    glossary: Optional[Glossary] = None,
+) -> List[str]:
     """
     Translate several texts in a single Azure request
 
@@ -150,10 +157,24 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
         texts: Texts to translate
         from_language: Source language code
         to_language: Target language code
+        glossary: Optional terms to protect or translate consistently
 
     Returns:
         Translated texts, in the same order as the input
     """
+    entries = glossary_service.entries_for(glossary, to_language)
+    if entries and "en" in (from_language, to_language):
+        # Azure's dynamic dictionary requires English as one side of the pair.
+        texts = [glossary_service.azure_markup(text, entries) for text in texts]
+        restore_maps: List[Dict[str, str]] = [{} for _ in texts]
+    elif entries:
+        # Outside that pair use placeholders, then restore the requested terms below.
+        protected = [glossary_service.protect(text, entries) for text in texts]
+        texts = [text for text, _ in protected]
+        restore_maps = [replacements for _, replacements in protected]
+    else:
+        restore_maps = [{} for _ in texts]
+
     data = await _call_azure("/translate", {"from": from_language, "to": to_language}, texts)
     try:
         translated = [item["translations"][0]["text"] for item in data]
@@ -161,7 +182,11 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
         raise HTTPException(status_code=502, detail="No translation result received") from e
     if len(translated) != len(texts):
         raise HTTPException(status_code=502, detail="No translation result received")
-    return translated
+
+    return [
+        glossary_service.restore(text, replacements)
+        for text, replacements in zip(translated, restore_maps, strict=True)
+    ]
 
 
 async def detect_language(content: str) -> Tuple[str, float]:
