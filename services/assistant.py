@@ -6,7 +6,9 @@ import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
+from services import glossary as glossary_service
 from services import llm
+from services.glossary import Glossary
 from services.text import normalize_text
 
 
@@ -55,7 +57,11 @@ async def get_response(content: str, memory_context: Optional[List[Dict[str, Any
 
 
 async def translate_batch(
-    texts: List[str], from_language: str, to_language: str, provider: str
+    texts: List[str],
+    from_language: str,
+    to_language: str,
+    provider: str,
+    glossary: Optional[Glossary] = None,
 ) -> List[str]:
     """
     Translate texts with one LLM provider
@@ -65,29 +71,34 @@ async def translate_batch(
         from_language: Source language code
         to_language: Target language code
         provider: LLM provider name
+        glossary: Optional terms to protect or translate consistently
 
     Returns:
         Translated texts, in the same order as the input
     """
     texts = [normalize_text(text) for text in texts]
     source, target = _language_name(from_language), _language_name(to_language)
+    entries = glossary_service.entries_for(glossary, to_language)
+    terms = glossary_service.prompt_instruction(entries)
 
     # Small models such as MORENA are more reliable translating one plain-text item at a time
     if config.LLM_PROVIDERS[provider].kind == "morena":
         instruction = (
             f"Translate the following text from {source} to {target}. "
-            "Reply with only the translation."
+            "Reply with only the translation. Keep placeholder tokens unchanged."
         )
-        return [
-            await llm.complete(
+        translated: List[str] = []
+        for text in texts:
+            protected, replacements = glossary_service.protect(text, entries)
+            result = await llm.complete(
                 [provider],
-                [{"role": "user", "content": f"{instruction}\n\n{text}"}],
+                [{"role": "user", "content": f"{instruction}\n\n{protected}"}],
                 parse=_non_empty,
                 temperature=0.1,
                 max_tokens=512,
             )
-            for text in texts
-        ]
+            translated.append(glossary_service.restore(result, replacements))
+        return translated
 
     # A single text needs no JSON wrapper. Plain text is also more reliable for long texts:
     # strict JSON mode makes some providers reject outputs they can't validate.
@@ -98,6 +109,7 @@ async def translate_batch(
             f"Use correct {target} orthography, including tone marks and diacritics. "
             "Preserve meaning, tone, names, numbers and formatting. "
             "Reply with only the translation: no quotes, notes or explanations."
+            f"{terms}"
         )
         return [
             await llm.complete(
@@ -115,6 +127,7 @@ async def translate_batch(
         "Preserve meaning, tone, names, numbers and formatting. Do not add explanations. "
         'Reply only with a JSON object: {"translations": [...]} containing exactly one '
         "translated string per input, in the same order."
+        f"{terms}"
     )
 
     def parse(text: str) -> List[str]:
