@@ -38,7 +38,8 @@ built in the open so native speakers and developers can improve it together.
   the scenes, see [docs/AGENT.md](docs/AGENT.md)
 - **Multiple providers, models and keys** — Azure, Groq, OpenRouter, Together, Cerebras,
   Hugging Face, Ollama or MORENA, tried in order; keys rotate and failing keys, models or
-  providers are skipped automatically
+  providers are skipped automatically. Which user data each provider receives, and its
+  retention and training terms: [docs/DATA.md](docs/DATA.md)
 - **WhatsApp bot**: people message your WhatsApp number in any supported language and get
   answers in that language, with memory; plus an endpoint to send messages. See
   [docs/WHATSAPP.md](docs/WHATSAPP.md)

@@ -79,6 +79,9 @@ maintainer must approve.
 - CI is green (lint, types, tests on Python 3.11–3.13, Docker build, security scans).
 - Coverage stays at or above 85%.
 - New behaviour is documented in `README.md`.
+- If the change adds or removes an AI provider in `config.py`,
+  [docs/DATA.md](docs/DATA.md) is updated (what that provider receives and its retention
+  and training terms).
 - No secrets, `.env` files or large binaries are committed.
 - The Security workflow passes (malware, code, dependency, container and attack scans).
 
