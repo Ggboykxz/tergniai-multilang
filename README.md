@@ -94,8 +94,12 @@ docker compose up
 ```
 
 Starts the API with Redis, so the cache, rate limits and chat conversations are shared and
-survive restarts. The Redis service also has a 512 MB `volatile-lru` limit as a safety net;
-conversation storage independently enforces `CONVERSATION_MAX_ITEMS`.
+survive API container restarts. The Redis service runs **without persistence** (no RDB
+snapshots, no AOF, no volume): everything it holds is short-lived by design, and we do not
+want chat text written to disk where it would outlive the keys' TTL. For longer-lived
+shared storage, point `REDIS_URL` at an external Redis you manage. The Redis service also
+has a 512 MB `volatile-lru` limit as a safety net; conversation storage independently
+enforces `CONVERSATION_MAX_ITEMS`.
 
 ### Deploy a public demo
 
@@ -229,8 +233,11 @@ When `API_KEYS` is set, every `/v1/*` endpoint except `/v1/languages` requires a
 `X-RateLimit-Remaining`; when exceeded you get `429` with a `Retry-After` header.
 
 > By default the cache, rate limiter and chat conversations live in each server process's
-> memory. Set `REDIS_URL` to share them between replicas and keep conversations across restarts
-> (`docker compose up` does this for you).
+> memory. Set `REDIS_URL` to share them between replicas (`docker compose up` does this
+> for you; the compose Redis runs without persistence, so nothing is written to disk).
+> If you point it at an external Redis with persistence enabled, conversation text will
+> be written to that server's disk and backups: you then own its encryption at rest and
+> backup retention.
 
 ### Metrics
 

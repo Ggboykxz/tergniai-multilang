@@ -221,6 +221,10 @@ smallest machine; use a machine with at least 1 GB of RAM or a separate service.
 - Set `RATE_LIMIT_PER_MINUTE` low and `RATE_LIMIT_MAX_WAIT_SECONDS=0`.
 - Set `CORS_ORIGINS` only if a browser app on another origin calls the API. The built-in
   `/chat` page is same-origin and does not need it.
+- The bundled `docker compose` Redis runs without persistence, so chat text never lands
+  on its disk. If you point `REDIS_URL` at an external Redis with persistence or
+  snapshots enabled, conversation text will be written to that server's disk and survive
+  in its backups: you own its encryption at rest and backup retention.
 - `/metrics` and the health probes are public by design. Put `/metrics` behind your
   proxy or firewall if the deployment is not a throwaway demo.
 - Review [SECURITY.md](../SECURITY.md) before exposing a production instance.
