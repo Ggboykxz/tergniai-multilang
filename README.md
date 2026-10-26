@@ -133,6 +133,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `DETECTION_PROVIDERS` | no | `azure` + LLM providers except MORENA | Providers used for language detection |
 | `AGENT_PROVIDERS` | no | OpenAI-compatible chat providers | Providers that run the agent (must support tool calling) |
 | `AGENT_MAX_STEPS` | no | `6` | Max model turns per agent request |
+| `AGENT_MAX_TOKENS` | no | `1500` | Max tokens per agent model call (bounds the cost of a multi-step request) |
 | `CONVERSATION_TTL_SECONDS` | no | `86400` | How long chats are remembered after the last message |
 | `CONVERSATION_MAX_ITEMS` | no | `10000` | Maximum conversations kept; the least recently written are evicted first |
 | `CONVERSATION_MAX_MESSAGES` | no | `40` | Messages kept per conversation |
@@ -148,6 +149,8 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `REQUEST_TIMEOUT` | no | `30` | Upstream timeout in seconds |
 | `REQUEST_DEADLINE_SECONDS` | no | `55` | Whole-request wall-clock budget for JSON responses; retries, fallbacks and agent steps share it (`0` disables) |
 | `STREAM_DEADLINE_SECONDS` | no | `120` | Whole-request budget for streaming responses (`0` disables) |
+| `STREAM_HEARTBEAT_SECONDS` | no | `15` | `/v1/chat/stream` sends an SSE keep-alive comment at most this often, so idle proxies don't cut long streams (`0` disables) |
+| `STREAM_QUEUE_MAXSIZE` | no | `256` | Pending events per stream; a client that reads slowly pauses generation (backpressure) instead of growing memory (`0` removes the bound) |
 | `REQUEST_MAX_UPSTREAM_ATTEMPTS` | no | `20` | Maximum upstream requests per API request, retries and fallbacks included (`0` disables) |
 | `UPSTREAM_MAX_RETRIES` | no | `2` | Retries for upstream `5xx`/connection errors (all providers) and Azure `429`s; `0` disables. LLM `429`s rotate to the next key or model instead |
 | `UPSTREAM_RETRY_BASE_DELAY` | no | `0.5` | First backoff step in seconds; doubles each retry, with full jitter |
@@ -157,6 +160,7 @@ All configuration comes from environment variables (see [`.env.example`](.env.ex
 | `API_KEYS` | no | *(auth disabled)* | Comma-separated client keys accepted in `X-API-Key` |
 | `WHATSAPP_*` | no | *(off)* | WhatsApp bot settings, see [docs/WHATSAPP.md](docs/WHATSAPP.md) |
 | `RATE_LIMIT_PER_MINUTE` | no | `60` | Requests per minute per client; `0` disables |
+| `AUTH_FAILURES_PER_MINUTE` | no | `10` | Failed API-key attempts allowed per IP per minute; `0` disables |
 | `CACHE_TTL_SECONDS` | no | `3600` | Translation cache lifetime; `0` disables |
 | `CACHE_MAX_ITEMS` | no | `1000` | Max cached translations |
 | `CACHE_SCOPE` | no | `key` when `API_KEYS` is set, else `global` | `key`: each API key has its own translation cache, so one caller can't tell (from cache timing) whether another caller recently translated a text. `global`: one shared cache for everyone - more quota reuse, no isolation |
@@ -259,6 +263,7 @@ your internal network or block it at the reverse proxy).
 | `terngi_upstream_request_duration_seconds` | `service` | Upstream latency histogram |
 | `terngi_translation_cache_lookups_total` | `result` (`hit`/`miss`) | Translation cache lookups, one per text |
 | `terngi_rate_limited_requests_total` | — | Requests rejected by the rate limiter |
+| `terngi_auth_failures_total` | `outcome` (`invalid`/`throttled`) | Invalid API keys, and failed attempts throttled by the per-IP limiter |
 
 `route` is the route template (e.g. `/v1/translate`), or `unmatched` for unknown paths,
 so label values stay bounded. Metrics are per process, like the cache and rate limiter.
