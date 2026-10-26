@@ -57,6 +57,21 @@
   .msg.error { align-self: flex-start; color: var(--error); border: 1px solid var(--error); background: transparent; }
   .msg code { font-family: ui-monospace, Menlo, monospace; font-size: 14px; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
   .meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .feedback {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin-top: 8px; font-size: 13px; color: var(--muted);
+  }
+  .feedback button { padding: 3px 9px; border-radius: 999px; background: var(--bg); }
+  .feedback-panel {
+    flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px;
+    margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .feedback-panel .notice { margin: 0; font-size: 12px; color: var(--muted); }
+  .feedback-panel textarea { width: 100%; min-height: 58px; flex: none; }
+  .feedback-panel .consent { align-items: flex-start; font-size: 13px; }
+  .feedback-panel .consent input { margin-top: 3px; }
+  .feedback-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .feedback-status { font-size: 12px; }
   .typing { align-self: flex-start; color: var(--muted); font-size: 14px; }
   footer { border-top: 1px solid var(--border); background: var(--panel); padding: 12px 16px; }
   form { max-width: 760px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
@@ -372,6 +387,113 @@
     return el;
   }
 
+  // Optional, opt-in feedback. Nothing is sent until the user ticks the consent box.
+  function addFeedback(el, exchange) {
+    if (!exchange.from_language || !exchange.to_language) return;
+
+    const box = document.createElement("div");
+    box.className = "feedback";
+    const label = document.createElement("span");
+    label.textContent = "Rate this reply:";
+    const good = document.createElement("button");
+    good.type = "button";
+    good.textContent = "👍";
+    good.setAttribute("aria-label", "Good reply");
+    const bad = document.createElement("button");
+    bad.type = "button";
+    bad.textContent = "👎";
+    bad.setAttribute("aria-label", "Bad reply");
+    const status = document.createElement("span");
+    status.className = "feedback-status";
+    status.setAttribute("role", "status");
+    box.append(label, good, bad, status);
+    el.appendChild(box);
+
+    let panel = null;
+
+    function choose(rating) {
+      if (panel) { panel.remove(); panel = null; }
+      status.textContent = "";
+
+      panel = document.createElement("div");
+      panel.className = "feedback-panel";
+
+      const notice = document.createElement("p");
+      notice.className = "notice";
+      notice.textContent = "Feedback is optional. With your consent it is stored and may be " +
+        "published as part of Terngi's open evaluation set. Do not include personal information.";
+
+      const correction = document.createElement("textarea");
+      correction.rows = 2;
+      correction.placeholder = "Suggest a better reply (optional)";
+      correction.setAttribute("aria-label", "Suggest a better reply");
+
+      const consentLabel = document.createElement("label");
+      consentLabel.className = "consent";
+      const consent = document.createElement("input");
+      consent.type = "checkbox";
+      const consentText = document.createElement("span");
+      consentText.textContent = "I agree that this feedback may be stored and published in the " +
+        "open evaluation set.";
+      consentLabel.append(consent, consentText);
+
+      const actions = document.createElement("div");
+      actions.className = "feedback-actions";
+      const submit = document.createElement("button");
+      submit.type = "button";
+      submit.className = "primary";
+      submit.textContent = "Send feedback";
+      submit.disabled = true;
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "Cancel";
+      actions.append(submit, cancel);
+
+      consent.addEventListener("change", () => { submit.disabled = !consent.checked; });
+      cancel.addEventListener("click", () => { panel?.remove(); panel = null; });
+
+      submit.addEventListener("click", async () => {
+        if (!consent.checked) return;
+        submit.disabled = true;
+        submit.textContent = "Sending…";
+        const body = {
+          source_text: exchange.source_text,
+          translated_text: exchange.translated_text,
+          from_language: exchange.from_language,
+          to_language: exchange.to_language,
+          provider: "chat",
+          rating,
+          consent: true,
+        };
+        const better = correction.value.trim();
+        if (better) body.correction = better;
+        try {
+          const res = await fetch("/v1/feedback", {
+            method: "POST", headers: headers(), body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || `Could not send feedback (${res.status}).`);
+          }
+          panel?.remove(); panel = null;
+          good.disabled = true; bad.disabled = true;
+          status.textContent = "Thanks for the feedback.";
+        } catch (err) {
+          status.textContent = err.message || "Could not send feedback.";
+          submit.disabled = false;
+          submit.textContent = "Try again";
+        }
+      });
+
+      panel.append(notice, correction, consentLabel, actions);
+      box.appendChild(panel);
+      correction.focus();
+    }
+
+    good.addEventListener("click", () => choose("good"));
+    bad.addEventListener("click", () => choose("bad"));
+  }
+
   function autosize() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 180) + "px";
@@ -495,7 +617,13 @@
           if (bubble) { bubble.remove(); bubble = null; }
           typing.remove();
           const meta = usedTools.size ? `${TRANSLATIONS[currentLang].usedTools}: ${[...usedTools].join(", ")}` : null;
-          addMessage("bot", data.reply, meta);
+          const replyBubble = addMessage("bot", data.reply, meta);
+          addFeedback(replyBubble, {
+            source_text: text,
+            translated_text: data.reply,
+            from_language: data.language,
+            to_language: data.reply_language,
+          });
         } else if (event === "error") {
           bubble?.remove();
           bubble = null;
