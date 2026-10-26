@@ -249,6 +249,7 @@ async def request_context(request: Request, call_next: CallNext) -> Response:
     request.state.request_id = request_id
     # Services log it with upstream errors so they can be correlated with this request
     id_token = request_deadline.set_request_id(request_id)
+    scope_token = translator.set_cache_scope(_cache_scope_for(request))
     start = time.perf_counter()
 
     try:
@@ -259,6 +260,7 @@ async def request_context(request: Request, call_next: CallNext) -> Response:
         raise
     finally:
         request_deadline.reset_request_id(id_token)
+        translator.reset_cache_scope(scope_token)
 
     elapsed = time.perf_counter() - start
     elapsed_ms = elapsed * 1000
