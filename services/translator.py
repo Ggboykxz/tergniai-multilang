@@ -14,6 +14,7 @@ from fastapi import HTTPException
 import config
 import metrics
 from services import assistant, azure_translator, deadline, llm
+from services.glossary import Glossary, cache_signature, entries_for
 from services.store import StoreError, make_store
 from services.text import normalize_text
 
@@ -21,14 +22,20 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Cache of (from_language, to_language, content) -> translated text
+# Cache of (from_language, to_language, content, glossary) -> translated text
 translation_cache = make_store("translation", config.CACHE_MAX_ITEMS, config.CACHE_TTL_SECONDS)
 
 
-def _cache_key(from_language: str, to_language: str, text: str) -> str:
+def _cache_key(
+    from_language: str, to_language: str, text: str, glossary: Optional[Glossary] = None
+) -> str:
     """Fixed-length cache key, so long texts don't make huge Redis keys"""
     normalized = normalize_text(text)
-    return hashlib.sha256(f"{from_language}\x00{to_language}\x00{normalized}".encode()).hexdigest()
+    payload = f"{from_language}\x00{to_language}\x00{normalized}"
+    entries = entries_for(glossary, to_language)
+    if entries:
+        payload += "\x00" + cache_signature(entries)
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 async def _cache_get(key: str) -> Optional[str]:
@@ -87,7 +94,12 @@ async def _run_chain(
     raise last_error
 
 
-async def translate_text(content: str, from_language: str, to_language: str) -> str:
+async def translate_text(
+    content: str,
+    from_language: str,
+    to_language: str,
+    glossary: Optional[Glossary] = None,
+) -> str:
     """
     Translate a single text
 
@@ -95,14 +107,20 @@ async def translate_text(content: str, from_language: str, to_language: str) -> 
         content: Text to translate
         from_language: Source language code
         to_language: Target language code
+        glossary: Optional terms to protect or translate consistently
 
     Returns:
         Translated text
     """
-    return (await translate_batch([content], from_language, to_language))[0]
+    return (await translate_batch([content], from_language, to_language, glossary))[0]
 
 
-async def translate_batch(texts: List[str], from_language: str, to_language: str) -> List[str]:
+async def translate_batch(
+    texts: List[str],
+    from_language: str,
+    to_language: str,
+    glossary: Optional[Glossary] = None,
+) -> List[str]:
     """
     Translate several texts, reusing cached results
 
@@ -110,6 +128,7 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
         texts: Texts to translate
         from_language: Source language code
         to_language: Target language code
+        glossary: Optional terms to protect or translate consistently
 
     Returns:
         Translated texts, in the same order as the input
@@ -123,7 +142,7 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
         return texts
 
     deadline.check()
-    keys = [_cache_key(from_language, to_language, text) for text in texts]
+    keys = [_cache_key(from_language, to_language, text, glossary) for text in texts]
     results: List[Optional[str]] = [await _cache_get(key) for key in keys]
     missing = [i for i, result in enumerate(results) if result is None]
     metrics.CACHE_LOOKUPS.labels("hit").inc(len(texts) - len(missing))
@@ -133,8 +152,10 @@ async def translate_batch(texts: List[str], from_language: str, to_language: str
         pending = [texts[i] for i in missing]
         translated = await _run_chain(
             config.TRANSLATION_PROVIDERS,
-            lambda: azure_translator.translate_batch(pending, from_language, to_language),
-            lambda name: assistant.translate_batch(pending, from_language, to_language, name),
+            lambda: azure_translator.translate_batch(pending, from_language, to_language, glossary),
+            lambda name: assistant.translate_batch(
+                pending, from_language, to_language, name, glossary
+            ),
             languages=(from_language, to_language),
         )
         for i, text in zip(missing, translated, strict=True):

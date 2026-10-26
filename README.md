@@ -48,8 +48,7 @@ built in the open so native speakers and developers can improve it together.
 - **Converse** in any supported language; the reply comes back in the target language,
   with optional multi-turn memory (`memory_context`)
 - **Translation cache** (in-memory TTL/LRU) to save quota on repeated phrases
-- **Data access and deletion** - export a conversation or delete all your chats; see
-  [docs/PRIVACY.md](docs/PRIVACY.md)
+- **Opt-in feedback** for building an open translation evaluation set
 - **API-key authentication** (`X-API-Key`) and **per-client rate limiting**
 - **Request IDs** (`X-Request-ID`) and timing headers for tracing
 - Input validation, upstream timeouts and consistent JSON error responses
@@ -211,6 +210,7 @@ only through the proxy.
 | `POST` | `/v1/translate` | Translate text |
 | `POST` | `/v1/translate/batch` | Translate up to 25 texts in one request |
 | `POST` | `/v1/detect` | Detect the language of a text |
+| `POST` | `/v1/feedback` | Rate a translation or chat reply (opt-in) |
 | `POST` | `/v1/converse` | Translate and get an LLM reply |
 | `POST` | `/v1/agent` | The assistant without server memory (send `history` yourself) |
 | `POST` | `/v1/chat` | **Chat** with memory: send `message` and `conversation_id` |
@@ -266,6 +266,31 @@ curl -X POST http://localhost:8000/v1/translate/batch \
   -H 'Content-Type: application/json' -H 'X-API-Key: <your-key>' \
   -d '{"texts": ["Good morning", "Thank you"], "from_language": "en", "to_language": "ig"}'
 ```
+
+### Glossary
+
+Both translation endpoints accept an optional `glossary`: a map of source terms to a
+translation for every target language (`"Terngi": "Terngi"`) or to per-language translations
+(`"mobile money": {"ha": "kudin waya", "yo": "owo alagbeka"}`). A term mapped to itself is
+protected from translation; entries for other target languages are ignored.
+
+```bash
+curl -X POST http://localhost:8000/v1/translate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "content": "Welcome to Terngi, where you can pay with mobile money",
+    "from_language": "en",
+    "to_language": "ha",
+    "glossary": {
+      "Terngi": "Terngi",
+      "mobile money": {"ha": "kudin waya"}
+    }
+  }'
+```
+
+Azure Translator receives the terms as dynamic-dictionary markup, language models get them in
+the prompt and MORENA uses placeholders around protected terms. The glossary is part of the
+cache key, so the same text with different glossaries is translated and cached separately.
 
 ### Detect language
 
