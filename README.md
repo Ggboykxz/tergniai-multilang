@@ -218,6 +218,7 @@ only through the proxy.
 | `GET` | `/health/ready` | Readiness probe (public status; per-service details require a key) |
 | `GET` | `/metrics` | Prometheus metrics (requires a key or `METRICS_TOKEN` when auth is on) |
 | `GET` | `/v1/languages` | Supported language codes |
+| `GET` | `/v1/usage` | Daily usage for the calling API key (requests, upstream calls, tokens, quota) |
 | `POST` | `/v1/translate` | Translate text |
 | `POST` | `/v1/translate/batch` | Translate up to 25 texts in one request |
 | `POST` | `/v1/detect` | Detect the language of a text |
@@ -237,6 +238,13 @@ When `API_KEYS` is set, every `/v1/*` endpoint except `/v1/languages` requires a
 `X-API-Key` header. Each client (API key, or IP address when no key is sent) may make
 `RATE_LIMIT_PER_MINUTE` requests per minute. Responses include `X-RateLimit-Limit` and
 `X-RateLimit-Remaining`; when exceeded you get `429` with a `Retry-After` header.
+
+When `API_KEYS` is set, every request is also counted per API key, and
+`API_KEY_QUOTAS` can impose a daily request quota per key (reset at UTC midnight). Over
+quota, requests are answered with `429` and `Retry-After` set to the reset time, before
+any upstream work happens. `GET /v1/usage` returns the counters for the calling key
+(requests, upstream calls, provider-reported tokens) plus quota status. In `/metrics`,
+per-key labels are SHA-256 hashes of the keys, never the keys themselves.
 
 > By default the cache, rate limiter and chat conversations live in each server process's
 > memory. Set `REDIS_URL` to share them between replicas (`docker compose up` does this
@@ -274,6 +282,10 @@ http_get:
 | `terngi_translation_cache_lookups_total` | `result` (`hit`/`miss`) | Translation cache lookups, one per text |
 | `terngi_rate_limited_requests_total` | — | Requests rejected by the rate limiter |
 | `terngi_auth_failures_total` | `outcome` (`invalid`/`throttled`) | Invalid API keys, and failed attempts throttled by the per-IP limiter |
+| `terngi_api_key_requests_total` | `key` (hash) | Requests handled per API key |
+| `terngi_api_key_upstream_requests_total` | `key` (hash) | Upstream calls per API key |
+| `terngi_api_key_tokens_total` | `key` (hash), `kind` (`prompt`/`completion`) | Provider-reported tokens per API key |
+| `terngi_api_key_quota_exceeded_total` | `key` (hash) | Requests rejected because the key's daily quota was exceeded |
 
 `route` is the route template (e.g. `/v1/translate`), or `unmatched` for unknown paths,
 so label values stay bounded. Metrics are per process, like the cache and rate limiter.

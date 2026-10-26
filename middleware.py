@@ -14,12 +14,12 @@ from collections import defaultdict, deque
 from typing import Any, Awaitable, Callable, Deque, Dict, Optional
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 import config
 import metrics
 from services import deadline as request_deadline
-from services import translator
+from services import translator, usage
 from services.store import RedisRateLimiter, using_redis
 
 logger = logging.getLogger(__name__)
@@ -209,6 +209,20 @@ def _valid_api_key(candidate: Optional[str]) -> bool:
         return False
     candidate_bytes = candidate.encode("utf-8")
     return any(hmac.compare_digest(candidate_bytes, key.encode("utf-8")) for key in config.API_KEYS)
+
+
+def authenticated_key(request: Request) -> Optional[str]:
+    """The raw API key when API_KEYS is configured and the header is valid, else None"""
+    api_key = request.headers.get("x-api-key")
+    if config.API_KEYS and _valid_api_key(api_key):
+        return api_key
+    return None
+
+
+def usage_label(request: Request) -> Optional[str]:
+    """Hashed API-key label for usage tracking, or None without a valid key"""
+    api_key = authenticated_key(request)
+    return usage.key_label(api_key) if api_key else None
 
 
 def _record_request(request: Request, status: int, elapsed: float) -> None:

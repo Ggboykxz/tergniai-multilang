@@ -11,7 +11,7 @@ from fastapi import HTTPException
 
 import config
 import metrics
-from services import deadline
+from services import deadline, usage
 from services import glossary as glossary_service
 from services.glossary import Glossary
 from services.keypool import key_pool, mask
@@ -145,6 +145,7 @@ async def _call_azure(path: str, params: Dict[str, str], texts: List[str]) -> An
                 )
         raise HTTPException(status_code=502, detail="Translation service error")
 
+    await usage.record_upstream()  # Azure does not report token usage
     try:
         return response.json()
     except ValueError as e:

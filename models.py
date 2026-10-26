@@ -226,6 +226,30 @@ class FeedbackResponse(BaseModel):
     status: Literal["stored"] = "stored"
 
 
+class UsageStats(BaseModel):
+    """Usage counters for one API key on one UTC day"""
+
+    date: str
+    requests: int
+    upstream_calls: int
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
+class UsageResponse(BaseModel):
+    """Usage for the calling API key (issue #47)"""
+
+    usage: List[UsageStats]
+    quota: Optional[int] = Field(
+        default=None, description="Daily request quota for this key, if any"
+    )
+    remaining: Optional[int] = Field(
+        default=None, description="Requests left today before the quota"
+    )
+    resets_at: Optional[str] = Field(default=None, description="When the daily quota resets (UTC)")
+
+
 class WhatsAppTemplate(BaseModel):
     """An approved WhatsApp template (needed to message someone first, or after 24 hours)"""
 
