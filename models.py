@@ -2,7 +2,7 @@
 Pydantic models for the Terngi Translation API
 """
 
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, BeforeValidator, Field
 
@@ -19,6 +19,45 @@ Text = Annotated[
     Field(min_length=1, max_length=MAX_CONTENT_LENGTH),
 ]
 
+MAX_GLOSSARY_TERMS = 100
+MAX_GLOSSARY_TERM_LENGTH = 200
+
+
+def normalize_glossary(value: Any) -> Any:
+    """Normalise every term and translation to NFC before validating the glossary"""
+    if not isinstance(value, dict):
+        return value
+
+    normalized: Dict[str, Any] = {}
+    for source, translation in value.items():
+        if not isinstance(source, str):
+            return value
+        source = normalize_value(source)
+        if not source.strip():
+            raise ValueError("glossary terms must not be empty")
+        if isinstance(translation, str):
+            normalized[source] = normalize_value(translation)
+        elif isinstance(translation, dict):
+            normalized[source] = {
+                str(language): normalize_value(text) for language, text in translation.items()
+            }
+        else:
+            normalized[source] = translation
+    return normalized
+
+
+GlossaryTranslation = Annotated[str, Field(min_length=1, max_length=MAX_CONTENT_LENGTH)]
+GlossaryByLanguage = Annotated[Dict[str, GlossaryTranslation], Field(min_length=1, max_length=100)]
+GlossaryValue = Union[GlossaryTranslation, GlossaryByLanguage]
+Glossary = Annotated[
+    Dict[
+        Annotated[str, Field(min_length=1, max_length=MAX_GLOSSARY_TERM_LENGTH)],
+        GlossaryValue,
+    ],
+    BeforeValidator(normalize_glossary),
+    Field(max_length=MAX_GLOSSARY_TERMS),
+]
+
 
 class TranslationRequest(BaseModel):
     """Request model for translation endpoints"""
@@ -26,6 +65,9 @@ class TranslationRequest(BaseModel):
     content: Text
     from_language: str = Field(..., description='Language code, or "auto" to detect it')
     to_language: str
+    glossary: Optional[Glossary] = Field(
+        None, description="Terms to protect or translate consistently, e.g. {'Terngi': 'Terngi'}"
+    )
 
 
 class TranslationResponse(BaseModel):
@@ -71,6 +113,9 @@ class BatchTranslationRequest(BaseModel):
     texts: List[Text] = Field(..., min_length=1, max_length=MAX_BATCH_SIZE)
     from_language: str = Field(..., description='Language code, or "auto" to detect it')
     to_language: str
+    glossary: Optional[Glossary] = Field(
+        None, description="Terms to protect or translate consistently, e.g. {'Terngi': 'Terngi'}"
+    )
 
 
 class BatchTranslationResponse(BaseModel):
